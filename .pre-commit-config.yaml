@@ -10,6 +10,12 @@ repos:
       - id: conventional-pre-commit
         stages: [commit-msg]
 
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        args: ["-x", "-S", "warning"]
+
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.0
     hooks:

@@ -6,19 +6,22 @@ Sync the current branch with the remote default branch. Be efficient — do not 
 
 ## Execute
 
-Run these two commands in parallel:
-
-- `git fetch origin`
-- `git remote show origin | grep 'HEAD branch' | awk '{print $NF}'`
-
-Then rebase onto the default branch:
+Resolve the publish skill directory:
 
 ```bash
-git rebase origin/<DEFAULT_BRANCH>
+SKILL_DIR="$(cd "$(dirname "$(readlink -f ~/.claude/skills/publish/SKILL.md)")" && pwd)"
 ```
 
-If conflicts occur, STOP and show the conflicting files. Ask the user how to proceed.
+Run the preflight script:
+
+```bash
+bash "$SKILL_DIR/preflight.sh"
+```
+
+Parse the JSON output:
+- `rebase: "clean"` → success
+- `rebase: "conflict"` → STOP: show `conflict_files`, ask user how to proceed
 
 ## Output
 
-Print one line: `Rebased on origin/<DEFAULT_BRANCH> — up to date.` or the conflict details.
+Print one line: `Rebased on origin/<default_branch> — up to date.` or the conflict details.

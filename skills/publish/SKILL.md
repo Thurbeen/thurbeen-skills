@@ -9,8 +9,7 @@ allowed-tools: Read, Edit, Write, Bash, Glob, Grep, Agent, WebFetch, Skill
 
 Refactor recent changes, then ship the current branch as a PR
 with auto-merge enabled. After shipping, monitor CI checks and
-proactively fix any failures until the PR merges. Be thorough
-on refactoring but efficient on shipping.
+proactively fix any failures until the PR merges.
 
 **Input:** `$ARGUMENTS` optionally describes what was done
 (used for the commit message and PR description).
@@ -19,115 +18,127 @@ on refactoring but efficient on shipping.
 
 ### Phase 0 — Pre-flight
 
-Run `/sync` to sync the branch with the remote default branch
-before refactoring.
-
-Then determine DEFAULT_BRANCH and CURRENT_BRANCH:
+Run the preflight script to sync with the remote default branch:
 
 ```bash
-git remote show origin | grep 'HEAD branch' | awk '{print $NF}'
-git branch --show-current
+SKILL_DIR="$(cd "$(dirname "$(readlink -f ~/.claude/skills/publish/SKILL.md)")" && pwd)"
+bash "$SKILL_DIR/scripts/preflight.sh"
 ```
 
-If on the default branch, STOP: "Create a feature branch
-first."
+Parse the JSON output:
+- If `rebase` is `"conflict"` → STOP: show `conflict_files` and ask user
+- If exit code is 2 → STOP: show `error` from JSON
+- Save `default_branch` and `current_branch` for later phases
 
 ---
 
 ### Phase 1 — Refactor
 
-Run `/refactor` to perform the full 3-pass refactoring cycle
-on recent changes (structure, coherence, tests).
+Check config first:
+
+```bash
+source "$SKILL_DIR/scripts/common.sh"
+config_get "publish.skip_refactor" "false"
+```
+
+If `skip_refactor` is `"true"`, skip this phase.
+
+Otherwise, run `/refactor` to perform the full 3-pass refactoring
+cycle on recent changes (structure, coherence, tests).
 
 ---
 
 ### Phase 2 — Ship
 
-Run `/ship` to commit, sync, push, and create/update a PR
-with auto-merge. If `$ARGUMENTS` was provided, pass it along
-so the commit message and PR description reflect it.
+Run the ship script:
+
+```bash
+bash "$SKILL_DIR/scripts/ship.sh" --message "<conventional commit message>"
+```
+
+If `$ARGUMENTS` was provided, use it to craft the commit message.
+Otherwise, infer type and scope from the diff. Always use
+conventional commit format.
+
+Parse the JSON output:
+- If `rebase` is `"conflict"` → STOP
+- Save `pr.url` for the final output
 
 ---
 
 ### Phase 3 — Monitor & Validate
 
 After shipping, monitor the PR until it merges or a hard-stop
-condition is reached. Be proactive: if CI fails, diagnose and
-fix the issue, then push again.
+condition is reached.
 
-This phase adapts to the project: not all repos have CI
-checks, deployments, or auto-merge. Detect what applies and
-skip what doesn't.
+#### Step 0 — Detect capabilities
 
-#### Step 0 — Detect project capabilities
-
-```text
-Run in parallel:
-- gh pr checks --json name,state  → HAS_CHECKS (non-empty list)
-- gh pr view --json autoMergeRequest → HAS_AUTO_MERGE (non-null)
-
-If no checks and no auto-merge:
-    Skip monitoring entirely → go to Final Output
-If no checks but auto-merge is set:
-    Wait for merge only (skip Fix step entirely)
+```bash
+gh pr checks --json name,state 2>/dev/null
+gh pr view --json autoMergeRequest 2>/dev/null
 ```
+
+- If no checks and no auto-merge → skip monitoring → Final Output
+- If no checks but auto-merge → wait for merge only
 
 #### Monitor loop
 
 ```text
 fix_count = 0
-wait = 30  # seconds
-round = 0
+wait = 30
+max_rounds = config_get("publish.monitor_rounds", "10")
+max_fixes = config_get("publish.max_fix_attempts", "3")
 
-while round < 10:
+while round < max_rounds:
     round += 1
     sleep <wait> seconds
     wait = min(wait * 1.5, 120)
 
-    Run in parallel:
-    - gh pr view --json state,mergeStateStatus,mergeable
-    - gh pr checks --json name,state,conclusion,detailsUrl
+    Run monitor script:
+    bash "$SKILL_DIR/scripts/monitor.sh"
 
-    Evaluate:
+    Parse JSON action field:
 
-    A) PR state == MERGED → go to Validate step
-    B) All checks passing, merge pending → continue loop
-    C) One or more checks failed → go to Fix step
-    D) PR closed (not merged) → STOP: "PR was closed"
-    E) Merge conflicts → STOP: "Merge conflicts — rebase manually"
+    "merged"  → run validate.sh, go to Final Output
+    "wait"    → continue loop
+    "stop"    → STOP: show stop_reason
+    "fix"     → go to Fix step
 ```
 
 #### Fix step
 
 ```text
-if fix_count >= 3:
-    STOP: "CI still failing after 3 fix attempts.
-    Failing checks: <list>. Manual intervention required."
+if fix_count >= max_fixes:
+    STOP: "CI still failing after N attempts. Manual intervention required."
 
 fix_count += 1
 
-1. Identify failed check(s) from gh pr checks output
+1. Read failed_checks from monitor.sh JSON output
 2. For each failed check:
-   a. Extract run-id from the details URL
+   a. Extract run-id from detailsUrl
    b. Get log: gh run view <run-id> --log-failed
-   c. Read error output and diagnose root cause
+   c. Diagnose root cause
 3. Apply fixes to the codebase
-4. Run /ship to commit and push the fix
+4. Run ship script again:
+   bash "$SKILL_DIR/scripts/ship.sh" --message "fix: resolve CI failure"
 5. Reset wait = 30
 6. Continue monitor loop
 ```
 
 #### Validate step
 
-After the PR merges:
+After PR merges, poll for deployment status (max 5 rounds, 30s apart):
 
-1. Confirm merge: `gh pr view --json state` → assert MERGED
-2. Check for deployment workflows:
-   `gh run list --branch <DEFAULT_BRANCH> --limit 5 --json name,status,conclusion`
-3. If a deployment run is in progress, poll every 30s (max 5
-   times) until it completes or fails
-4. If deployment fails, STOP and show the failed run URL
-5. If no deployment runs exist, skip — not all projects deploy
+```text
+for round in 1..5:
+    bash "$SKILL_DIR/scripts/validate.sh" --branch <default_branch>
+
+    Parse JSON deployment field:
+    found=false        → no deployments, go to Final Output
+    status="success"   → go to Final Output
+    status="failure"   → STOP with deployment URL
+    status="in_progress" → sleep 30, continue polling
+```
 
 ---
 
@@ -135,7 +146,7 @@ After the PR merges:
 
 Print a summary (max 8 lines):
 
-- Refactor: Pass 1 + Pass 2 + Pass 3 changes (counts)
+- Refactor: Pass 1 + Pass 2 + Pass 3 changes (counts), or skipped
 - Commit: new or amended, with message
 - PR: URL
 - Auto-merge: enabled / not configured

@@ -15,16 +15,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: "TODO: Add your lint steps"
-        run: echo "Add linting commands here"
+      - name: Run shellcheck
+        run: find . -name '*.sh' -type f -not -path './.git/*' -exec shellcheck -x -S warning {} +
 
-  test:
-    name: Test
+  common-sh-sync:
+    name: common.sh sync
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: "TODO: Add your test steps"
-        run: echo "Add test commands here"
+      - name: Verify all common.sh copies are identical
+        run: |
+          canonical="$(find skills -path '*/scripts/common.sh' -type f | head -1)"
+          drift=0
+          for f in skills/*/scripts/common.sh; do
+            if ! diff -q "$canonical" "$f" >/dev/null 2>&1; then
+              echo "DRIFT: $f differs from $canonical"
+              diff "$canonical" "$f" || true
+              drift=1
+            fi
+          done
+          if [[ "$drift" -eq 1 ]]; then
+            echo "Fix: copy the canonical common.sh to all skill directories"
+            exit 1
+          fi
+          echo "All common.sh files are in sync"
 
   conventional-commits:
     name: Conventional Commits
@@ -44,7 +58,7 @@ jobs:
     if: always()
     needs:
       - lint
-      - test
+      - common-sh-sync
       - conventional-commits
     runs-on: ubuntu-latest
     steps:
