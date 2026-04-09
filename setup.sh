@@ -39,3 +39,6 @@ if [ -d "$SCRIPT_DIR/commands" ]; then
         echo "Linked command: $name"
     done
 fi
+
+# Ensure all .sh files are executable
+find "$SCRIPT_DIR" -name '*.sh' -type f -exec chmod +x {} +
