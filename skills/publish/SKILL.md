@@ -1,6 +1,6 @@
 ---
 name: publish
-description: Refactor and test recent changes, ship as a PR with auto-merge, then monitor CI and auto-fix failures until merged.
+description: Refactor and test recent changes across all repos with publishable changes, ship PRs with auto-merge, then monitor CI and auto-fix failures until merged.
 user-invocable: true
 allowed-tools: Read, Edit, Write, Bash, Glob, Grep, Agent, WebFetch, Skill
 ---
@@ -14,21 +14,34 @@ directories and runs the full publish flow for each.
 **Input:** `$ARGUMENTS` optionally describes what was done
 (used for the commit message and PR description).
 
+### Setup
+
+Resolve the skill directory once for all phases:
+
+```bash
+SKILL_DIR="$(cd "$(dirname "$(readlink -f ~/.claude/skills/publish/SKILL.md)")" && pwd)"
+```
+
 ---
 
 ### Phase 0 — Detect Repos
 
 Use the Agent tool to discover all git repositories with
-publishable changes across allowed directories.
+publishable changes across the directories this session is
+allowed to access.
 
 Spawn an agent with the following task:
 
-> Find all git repositories within my allowed directories that
-> have publishable changes. A repo has publishable changes if it
-> is on a feature branch (not the default branch) AND has either
-> uncommitted changes or commits ahead of the default branch.
+> List the directories this Claude Code session is allowed to
+> access. For each allowed directory, check whether it is a git
+> repository (has a `.git` directory) or contains git repos one
+> level deep.
 >
-> For each repo found, report:
+> A repo has publishable changes if it is on a feature branch
+> (not the default branch) AND has either uncommitted changes
+> or commits ahead of the default branch.
+>
+> For each publishable repo, report:
 > - path (absolute)
 > - name (directory basename)
 > - current branch
@@ -36,8 +49,7 @@ Spawn an agent with the following task:
 > - number of commits ahead
 > - whether it has uncommitted changes
 >
-> Use `git` commands to check each repo. Skip repos that are on
-> their default branch with no changes.
+> Skip repos on their default branch with no changes.
 
 Parse the agent's response into a list of repos to publish.
 
@@ -55,7 +67,6 @@ before running each phase's scripts).
 Change into the repo directory, then run:
 
 ```bash
-SKILL_DIR="$(cd "$(dirname "$(readlink -f ~/.claude/skills/publish/SKILL.md)")" && pwd)"
 cd "<repo.path>"
 bash "$SKILL_DIR/scripts/preflight.sh"
 ```
@@ -136,7 +147,6 @@ while round < max_rounds:
     wait = min(wait * 1.5, 120)
 
     Run monitor script:
-    cd "<repo.path>"
     bash "$SKILL_DIR/scripts/monitor.sh"
 
     Parse JSON action field:
