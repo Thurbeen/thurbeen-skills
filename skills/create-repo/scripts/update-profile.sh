@@ -44,11 +44,11 @@ WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 log "Cloning ${PROFILE_REPO}..."
-if ! gh repo clone "$PROFILE_REPO" "$WORK_DIR/repo" -- --depth 1 2>&1 >&2; then
+if ! gh repo clone "$PROFILE_REPO" "$WORK_DIR/repo" -- --depth 1 >/dev/null 2>&1; then
   die "Failed to clone ${PROFILE_REPO}"
 fi
 
-cd "$WORK_DIR/repo"
+cd "$WORK_DIR/repo" || die "Failed to enter clone directory"
 
 [[ -f "$FILE" ]] || die "File not found in repo: ${FILE}"
 
@@ -105,12 +105,12 @@ git config user.name "claude-code-bot"
 git config user.email "claude-code-bot@users.noreply.github.com"
 
 BRANCH="profile/add-${SOURCE_NAME}"
-git checkout -b "$BRANCH" 2>&1 >&2
-git add "$FILE" 2>&1 >&2
-git commit -m "docs: add ${SOURCE_REPO} to profile" 2>&1 >&2
+git checkout -b "$BRANCH" >/dev/null 2>&1
+git add "$FILE"
+git commit -m "docs: add ${SOURCE_REPO} to profile" >/dev/null 2>&1
 
 log "Pushing branch ${BRANCH}..."
-if ! git push -u origin "$BRANCH" 2>&1 >&2; then
+if ! git push -u origin "$BRANCH" >/dev/null 2>&1; then
   die "Failed to push branch to ${PROFILE_REPO}"
 fi
 
@@ -124,7 +124,7 @@ if ! PR_URL=$(gh pr create \
 fi
 
 # Enable auto-merge so it lands without manual intervention
-gh pr merge "$PR_URL" --auto --rebase 2>&1 >&2 || warn "Auto-merge not available for ${PROFILE_REPO}"
+gh pr merge "$PR_URL" --auto --rebase >/dev/null 2>&1 || warn "Auto-merge not available for ${PROFILE_REPO}"
 
 log "PR created: ${PR_URL}"
 
