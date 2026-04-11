@@ -32,6 +32,7 @@ Parse config defaults. Overlay any explicit arguments from `$ARGUMENTS`:
 - Extract `--visibility <public|private>` if present
 - Extract `--description "<text>"` if present
 - Extract `--org <org>` if present
+- Extract `--emoji <emoji>` if present
 
 If name is missing, STOP and ask the user.
 
