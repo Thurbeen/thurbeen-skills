@@ -1,6 +1,6 @@
 ---
 name: code-security
-description: Review the pending diff on the current branch for security issues (injection, authz, secrets, crypto misuse, SSRF, XSS, etc.) and apply fixes. Stops before commit; pair with /publish to ship.
+description: Review the pending diff on the current branch for security issues (injection, authz, secrets, crypto misuse, SSRF, XSS, etc.) and apply fixes. Runs on the current repo by default; pass "all" to fan out across every accessible repo with pending changes. Stops before commit; pair with /publish to ship.
 user-invocable: true
 allowed-tools: Read, Edit, Write, Bash, Glob, Grep, Agent
 ---
@@ -12,7 +12,13 @@ vulnerabilities and apply fixes. Does **not** commit or push — pair
 with `/publish` afterward to ship.
 
 **Input:** `$ARGUMENTS` optionally narrows scope (e.g. a path or
-category like "authz only"). Default: review everything pending.
+category like "authz only"). Default: review everything pending in
+the current repo.
+
+**Multi-repo mode:** if `$ARGUMENTS` contains the token `all` (e.g.
+`all`, `all authz only`), run across every accessible repo with
+pending changes. See Phase -1 below. Any remaining tokens after
+removing `all` become the per-repo scope hint.
 
 ### Scope
 
@@ -45,6 +51,38 @@ Read optional overrides from `.claude/config.yaml`:
   `low`). One of: `info|low|medium|high|critical`.
 - `code-security.auto_fix_max_severity` — severities fixed without
   asking (default `medium`; `high`/`critical` always prompt).
+
+---
+
+### Phase -1 — Detect Repos (multi-repo mode only)
+
+Skip this phase unless `$ARGUMENTS` contains `all`.
+
+Use the Agent tool to discover all git repositories with pending
+changes across directories this session is allowed to access.
+
+Spawn an agent with the following task:
+
+> List the directories this Claude Code session is allowed to
+> access. For each allowed directory, check whether it is a git
+> repository (has a `.git` directory) or contains git repos one
+> level deep.
+>
+> A repo has pending changes if it is on a feature branch (not the
+> default branch) AND has either uncommitted changes or commits
+> ahead of the default branch.
+>
+> For each such repo, report: path (absolute), name, current
+> branch, default branch.
+>
+> Skip repos on their default branch with no changes.
+
+If no repos have pending changes → STOP: "No repos with pending
+changes found."
+
+For each detected repo, `cd "<repo.path>"` and execute Phases 0–5
+sequentially. Collect per-repo results and emit a combined summary
+at the end (one block per repo, same shape as Phase 5).
 
 ---
 
