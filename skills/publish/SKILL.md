@@ -11,6 +11,11 @@ Refactor recent changes, then ship as PRs with auto-merge enabled.
 Detects all repos with publishable changes within allowed
 directories and runs the full publish flow for each.
 
+**Do not stop mid-flow.** Phases 1–4 run to completion for every
+repo detected in Phase 0. Sub-commands like `/refactor` produce
+their own summaries — those are intermediate, never terminal.
+The only terminal output is the Final Output section at the end.
+
 **Input:** `$ARGUMENTS` optionally describes what was done
 (used for the commit message and PR description).
 
@@ -95,9 +100,19 @@ If `skip_refactor` is `"true"`, skip this phase.
 Otherwise, run `/refactor` to perform the full 3-pass refactoring
 cycle on recent changes (structure, coherence, tests).
 
+**IMPORTANT:** `/refactor` ends with its own "Final Summary" — that
+summary is NOT the end of publish. Do not stop, do not ask the user
+to confirm, do not wait. As soon as `/refactor` returns, immediately
+proceed to Phase 3 for this same repo. Treat the refactor summary as
+an intermediate artifact, not a terminal response.
+
 ---
 
 ### Phase 3 — Ship (per repo)
+
+**Entry reminder:** If you just finished Phase 2 (`/refactor`),
+continue here without pausing. The publish flow is not done until
+Phase 4 records a result for every repo in the Phase 0 list.
 
 Run the ship script from the repo directory:
 
