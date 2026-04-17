@@ -7,6 +7,14 @@
 #   0 = found, JSON printed on stdout
 #   1 = no sentinel yet (worker still running)
 #   2 = sentinel present but JSON malformed
+#
+# Recognized JSON fields (all other keys are preserved verbatim):
+#   Required: status ∈ {"ok","error"}
+#   Optional: artifact, notes, pr_url, bd_id
+#
+# Extra fields are passed through unchanged so the lead can consume them
+# without this script needing to know every schema version. Callers that
+# only read status/artifact/notes continue to work.
 
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
@@ -34,9 +42,13 @@ if [[ -z "$JSON" ]]; then
   exit 2
 fi
 
-# Validate it parses as JSON if a parser is available.
+# Validate it parses as JSON if a parser is available, and enforce that
+# `status` is present. Extra fields (pr_url, bd_id, etc.) are allowed.
 if command -v jq &>/dev/null; then
   if ! printf '%s' "$JSON" | jq -e . >/dev/null 2>&1; then
+    exit 2
+  fi
+  if ! printf '%s' "$JSON" | jq -e 'has("status")' >/dev/null 2>&1; then
     exit 2
   fi
 fi
