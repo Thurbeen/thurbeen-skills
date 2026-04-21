@@ -1,8 +1,15 @@
 # thurbeen-skills
 
-Centralized Claude Code skills and commands shared across all repositories. Uses a **script-first** approach: deterministic operations run as shell scripts, while `SKILL.md` files orchestrate Claude-driven decisions.
+Centralized Claude Code skills and commands shared across all repositories.
+Each `SKILL.md` is a set of instructions Claude follows directly through its
+native tools (Bash, Edit, Read, Agent, …); shell scripts are reserved for
+the few routines that genuinely benefit from being atomic or are reused by
+non-Claude callers (e.g. `publish/scripts/ship.sh`, used by `bump-pr-fixer`
+and `infra-monitor` from cron / CI contexts).
 
-Each skill is **self-contained** — copy the folder into any `.claude/skills/` and it works. Skills share an identical `common.sh`; CI enforces they stay in sync.
+Each skill is **self-contained** — copy the folder into any `.claude/skills/`
+and it works. Skills that ship a `scripts/common.sh` keep it identical
+across copies; CI enforces the sync.
 
 ## Installation
 
@@ -21,26 +28,20 @@ The installer is idempotent — safe to re-run after pulling updates. It symlink
 ```
 skills/
   publish/
-    SKILL.md               Orchestrator: refactor → ship → monitor CI
-    common.sh              Shared utilities (logging, config, JSON output)
-    preflight.sh           Fetch, detect branches, rebase
-    ship.sh                Commit, push, PR, auto-merge
-    monitor.sh             Single CI poll round
-    validate.sh            Post-merge deployment check
-  bump-pr-fixer/
-    SKILL.md               Orchestrator: find failed Renovate PRs → fix
-    common.sh              Shared utilities
-    find-failed-prs.sh     Find Renovate PRs with failing CI
-    fix-pr.sh              Checkout PR, run Claude, push fix
-  infra-monitor/
-    SKILL.md               Orchestrator: collect cluster state → fix
-    common.sh              Shared utilities
-    collect-state.sh       kubectl + Prometheus data collection
-    create-fix-pr.sh       Clone repo, branch, commit, create PR
+    SKILL.md               Refactor → ship → monitor CI (Claude-driven)
+    scripts/
+      common.sh            Shared helpers (logging, config, JSON output)
+      ship.sh              Atomic commit → rebase → push → PR → auto-merge
+  bump-pr-fixer/           Find failed Renovate PRs → claude -p → ship.sh
+  infra-monitor/           Collect cluster state → claude -p → ship.sh
+  code-security/           Diff-scoped security review (Claude-driven)
+  docs-update/             Diff-scoped doc drift review (Claude-driven)
+  create-repo/             Bootstrap a GitHub repo from template
+  orchestrate/             Supervisor-pattern multi-session orchestration
 commands/
-  refactor.md              Multi-pass refactoring (pure Claude-driven)
-  ship.md                  Thin wrapper → publish/ship.sh
-  sync.md                  Thin wrapper → publish/preflight.sh
+  refactor.md              Multi-pass refactoring
+  ship.md                  Thin wrapper → publish/scripts/ship.sh
+  sync.md                  Direct git fetch + rebase
 scripts/
   setup-repo.sh            GitHub repo configuration
 ```
@@ -52,6 +53,10 @@ scripts/
 | `publish` | Refactor, ship as PR with auto-merge, monitor CI | Yes |
 | `bump-pr-fixer` | Fix failing Renovate dependency PRs | No (job) |
 | `infra-monitor` | Monitor K8s cluster, create GitOps fix PRs | No (job) |
+| `code-security` | Diff-scoped security review and fix | Yes |
+| `docs-update` | Diff-scoped doc drift review and fix | Yes |
+| `create-repo` | Create a configured GitHub repo from template | Yes |
+| `orchestrate` | Decompose a goal into parallel worker sessions | Yes |
 
 ### Commands
 
@@ -63,7 +68,7 @@ scripts/
 
 ## Script Contract
 
-All `.sh` files in each skill follow:
+Where a skill does ship a `.sh` file, it follows:
 
 | Aspect | Convention |
 |--------|-----------|
@@ -103,8 +108,9 @@ your-repo/
     skills/
       my-skill/
         SKILL.md
-        common.sh
-        do-stuff.sh
+        scripts/
+          common.sh
+          do-stuff.sh
     config.yaml              # optional per-repo overrides
 ```
 

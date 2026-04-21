@@ -71,7 +71,7 @@ fi
 
 # Delegate commit and push to publish skill's ship.sh
 PUBLISH_DIR="$(cd "$(dirname "$(readlink -f "$HOME/.claude/skills/publish/SKILL.md")")" && pwd)"
-SHIP_OUTPUT="$(bash "$PUBLISH_DIR/ship.sh" --message "fix: resolve CI failures for dependency update")"
+SHIP_OUTPUT="$(bash "$PUBLISH_DIR/scripts/ship.sh" --message "fix: resolve CI failures for dependency update")"
 log "Ship output: ${SHIP_OUTPUT}"
 
 log "Pushed fix for PR #${PR_NUMBER}"

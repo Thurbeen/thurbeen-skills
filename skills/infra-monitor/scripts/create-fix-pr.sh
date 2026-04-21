@@ -77,7 +77,7 @@ fi
 
 # Delegate commit, push, and PR creation to publish skill's ship.sh
 PUBLISH_DIR="$(cd "$(dirname "$(readlink -f "$HOME/.claude/skills/publish/SKILL.md")")" && pwd)"
-SHIP_OUTPUT="$(bash "$PUBLISH_DIR/ship.sh" --message "fix: infra-monitor auto-remediation $(date +%Y-%m-%d)")"
+SHIP_OUTPUT="$(bash "$PUBLISH_DIR/scripts/ship.sh" --message "fix: infra-monitor auto-remediation $(date +%Y-%m-%d)")"
 log "Ship output: ${SHIP_OUTPUT}"
 
 PR_URL="$(echo "$SHIP_OUTPUT" | jq -r '.pr.url // empty')"
