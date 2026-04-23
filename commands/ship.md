@@ -6,28 +6,77 @@ Ship the current branch: commit (or amend), sync with remote, push, and create/u
 
 ## Execute
 
-Resolve the ship helper from the publish skill (it handles the full
-commit → rebase → push → PR → auto-merge sequence atomically):
+Read config (defaults shown):
 
 ```bash
-SHIP="$(cd "$(dirname "$(readlink -f ~/.claude/skills/publish/SKILL.md)")" && pwd)/scripts/ship.sh"
+AUTO_MERGE="$(yq -r   '.ship.auto_merge // true'          .claude/config.yaml 2>/dev/null)"
+MERGE_METHOD="$(yq -r '.publish.merge_method // "rebase"' .claude/config.yaml 2>/dev/null)"
 ```
 
-If `$ARGUMENTS` was provided, use it to craft a conventional commit message. Otherwise, inspect the diff to infer type and scope — do not ask, just pick:
+Abort on default branch:
 
 ```bash
-"$SHIP" --message "<conventional commit message>" --type "<type>"
+DEFAULT_BRANCH="$(git remote show origin | awk '/HEAD branch/ {print $NF}')"
+CURRENT_BRANCH="$(git branch --show-current)"
+[[ "$CURRENT_BRANCH" == "$DEFAULT_BRANCH" ]] && { echo "on default branch — refuse to ship"; exit 1; }
 ```
 
-If there are no uncommitted changes, omit `--message` and `--type` — the helper will skip the commit step.
+**1. Stage & commit.** If the tree is dirty, stage everything and unstage common secret paths. If `$ARGUMENTS` was provided, use it as the commit message (must be conventional commit format). Otherwise inspect the diff and infer type/scope — do not ask.
 
-Parse the JSON output and handle:
-- `rebase: "conflict"` → STOP: show conflict details
-- `error` → STOP: show error
+```bash
+git add -A
+git reset HEAD -- '*.env' '*credentials*' '*.key' '*.pem' 2>/dev/null || true
+git diff --cached --quiet || git commit -m "<conventional message>"
+```
+
+Or, if amending a previous commit:
+
+```bash
+git commit --amend --no-edit
+```
+
+**2. Rebase.**
+
+```bash
+git fetch origin
+git rebase "origin/${DEFAULT_BRANCH}"
+```
+
+On conflict: `git rebase --abort`, list files from `git diff --name-only --diff-filter=U`, STOP.
+
+**3. Push.**
+
+```bash
+git push --force-with-lease origin HEAD
+```
+
+**4. Ensure PR exists.** If `gh pr view` returns nothing, create one (truncate title to 70 chars):
+
+```bash
+gh pr view --json url,title,state 2>/dev/null \
+  || gh pr create --title "<title:0..70>" --body "$(cat <<'EOF'
+## Summary
+
+<1–3 bullets describing the change>
+
+## Test plan
+
+- CI checks pass
+EOF
+)"
+```
+
+**5. Auto-merge.** Only if `AUTO_MERGE == "true"`:
+
+```bash
+gh pr merge --auto --"${MERGE_METHOD}" 2>/dev/null \
+  && echo "auto-merge enabled" \
+  || echo "auto-merge not configured"
+```
 
 ## Output
 
-Print a short summary (no more than 5 lines) from the JSON:
+Print a short summary (no more than 5 lines):
 - Commit: new or amended, with the message
 - Rebase: clean or skipped
 - Push: done

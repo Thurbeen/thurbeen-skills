@@ -1,15 +1,10 @@
 # thurbeen-skills
 
-Centralized Claude Code skills and commands shared across all repositories.
-Each `SKILL.md` is a set of instructions Claude follows directly through its
-native tools (Bash, Edit, Read, Agent, …); shell scripts are reserved for
-the few routines that genuinely benefit from being atomic or are reused by
-non-Claude callers (e.g. `publish/scripts/ship.sh`, used by `bump-pr-fixer`
-and `infra-monitor` from cron / CI contexts).
+Centralized Claude Code skills and commands shared across all repositories. Skills are **agent-native**: each `SKILL.md` is a single instruction file that Claude executes using its built-in tools (Bash, Read, Edit, Write, Grep, Agent, Skill). No shell-script layer, no JSON IPC, no shared utility library.
 
-Each skill is **self-contained** — copy the folder into any `.claude/skills/`
-and it works. Skills that ship a `scripts/common.sh` keep it identical
-across copies; CI enforces the sync.
+Each skill is **self-contained** — copy the folder into any `.claude/skills/` and it works.
+
+The only exception is `orchestrate`, which still ships `scripts/` for its bd-backed state tracking and session plumbing (its supervisor-pattern workflow needs them).
 
 ## Installation
 
@@ -28,22 +23,30 @@ The installer is idempotent — safe to re-run after pulling updates. It symlink
 ```
 skills/
   publish/
-    SKILL.md               Refactor → ship → monitor CI (Claude-driven)
-    scripts/
-      common.sh            Shared helpers (logging, config, JSON output)
-      ship.sh              Atomic commit → rebase → push → PR → auto-merge
-  bump-pr-fixer/           Find failed Renovate PRs → claude -p → ship.sh
-  infra-monitor/           Collect cluster state → claude -p → ship.sh
-  code-security/           Diff-scoped security review (Claude-driven)
-  docs-update/             Diff-scoped doc drift review (Claude-driven)
-  create-repo/             Bootstrap a GitHub repo from template
-  orchestrate/             Supervisor-pattern multi-session orchestration
+    SKILL.md                 Refactor → ship → monitor CI → validate deploy
+  bump-pr-fixer/
+    SKILL.md                 Find failed Renovate PRs → diagnose → /ship
+  infra-monitor/
+    SKILL.md                 Collect K8s state → create GitOps fix PR
+  code-security/
+    SKILL.md                 Diff-scoped security review and fix
+  docs-update/
+    SKILL.md                 Diff-scoped doc drift review and fix
+  create-repo/
+    SKILL.md                 Create from template, configure, update profiles
+  test-driven-development/
+    SKILL.md
+    testing-anti-patterns.md
+  orchestrate/
+    SKILL.md                 Supervisor / worker decomposition
+    scripts/                 bd-helpers, session-create, result parsing
+    templates/
 commands/
-  refactor.md              Multi-pass refactoring
-  ship.md                  Thin wrapper → publish/scripts/ship.sh
-  sync.md                  Direct git fetch + rebase
+  refactor.md                Multi-pass refactoring
+  ship.md                    Commit, sync, push, create/update a PR
+  sync.md                    Rebase current branch on default
 scripts/
-  setup-repo.sh            GitHub repo configuration
+  setup-repo.sh              GitHub repo configuration
 ```
 
 ### Skills
@@ -51,12 +54,13 @@ scripts/
 | Skill | Description | User-invocable |
 |-------|-------------|----------------|
 | `publish` | Refactor, ship as PR with auto-merge, monitor CI | Yes |
-| `bump-pr-fixer` | Fix failing Renovate dependency PRs | No (job) |
-| `infra-monitor` | Monitor K8s cluster, create GitOps fix PRs | No (job) |
+| `create-repo` | Create a configured GitHub repo from template | Yes |
 | `code-security` | Diff-scoped security review and fix | Yes |
 | `docs-update` | Diff-scoped doc drift review and fix | Yes |
-| `create-repo` | Create a configured GitHub repo from template | Yes |
+| `test-driven-development` | TDD workflow guidance | Yes |
 | `orchestrate` | Decompose a goal into parallel worker sessions | Yes |
+| `bump-pr-fixer` | Fix failing Renovate dependency PRs | No (job) |
+| `infra-monitor` | Monitor K8s cluster, create GitOps fix PRs | No (job) |
 
 ### Commands
 
@@ -65,17 +69,6 @@ scripts/
 | `/refactor` | Multi-pass refactoring of newly implemented code |
 | `/ship` | Commit, sync, push, and create/update a PR |
 | `/sync` | Sync the current branch with the remote default branch |
-
-## Script Contract
-
-Where a skill does ship a `.sh` file, it follows:
-
-| Aspect | Convention |
-|--------|-----------|
-| Input | CLI args + env vars, no interactive input |
-| Output | JSON on stdout, human-readable logs on stderr |
-| Exit codes | 0=success, 1=recoverable (Claude handles), 2=fatal |
-| Source | `source "$(dirname "$0")/common.sh"` |
 
 ## Per-Repo Config
 
@@ -88,15 +81,15 @@ publish:
   monitor_rounds: 10          # max poll rounds
   merge_method: rebase        # rebase | squash | merge
 
+ship:
+  auto_merge: true            # enable auto-merge on PR
+
 refactor:
   passes: 3                   # number of review passes
   include_tests: true         # whether to run test pass
-
-ship:
-  auto_merge: true            # enable auto-merge on PR
 ```
 
-All values are optional with sensible defaults. No config file needed for default behavior.
+Each skill documents the keys it reads in its own `SKILL.md`. All values are optional with sensible defaults; no config file is needed for default behavior.
 
 ## Drop-in Skills
 
@@ -107,10 +100,7 @@ your-repo/
   .claude/
     skills/
       my-skill/
-        SKILL.md
-        scripts/
-          common.sh
-          do-stuff.sh
+        SKILL.md             # everything lives here
     config.yaml              # optional per-repo overrides
 ```
 
