@@ -151,7 +151,7 @@ After shipping, watch the PR until it merges or hits a hard stop.
 Detect capabilities once:
 
 ```bash
-gh pr checks --json name,state 2>/dev/null
+gh pr checks --json name,bucket 2>/dev/null
 gh pr view --json autoMergeRequest 2>/dev/null
 ```
 
@@ -175,14 +175,14 @@ for round in 1..MAX_ROUNDS:
     wait_s = min(wait_s * 1.5, 120)
 
     pr      = gh pr view   --json state,mergeStateStatus,mergeable
-    checks  = gh pr checks --json name,state,conclusion,detailsUrl
+    checks  = gh pr checks --json name,bucket,state,link
 
     if pr.state == "MERGED":  → validate (below), then next repo
     if pr.state == "CLOSED":  → record "PR closed", next repo
     if pr.mergeable == "CONFLICTING":
                               → record "merge conflicts — rebase manually", next repo
 
-    failed = [c for c in checks if c.conclusion in {"FAILURE","failure"}]
+    failed = [c for c in checks if c.bucket == "fail"]
     if failed: → fix step
     else:      → continue loop  (some still running, or all green awaiting merge)
 ```
@@ -196,7 +196,7 @@ if fix_count >= MAX_FIXES:
 
 fix_count += 1
 for c in failed:
-    run_id = trailing path segment of c.detailsUrl
+    run_id = path segment after "/runs/" in c.link
     gh run view <run_id> --log-failed
     diagnose root cause and apply fixes (Edit/Write)
 ```
