@@ -93,8 +93,8 @@ Prompt:
 > failing logs:
 >
 > ```bash
-> gh pr checks --json name,conclusion,detailsUrl
-> gh run view <run-id> --log-failed   # run-id is the trailing path segment of detailsUrl
+> gh pr checks --json name,bucket,state,link
+> gh run view <run-id> --log-failed   # run-id is the path segment after "/runs/" in link
 > ```
 >
 > Make minimal targeted fixes — do not refactor unrelated code. After
