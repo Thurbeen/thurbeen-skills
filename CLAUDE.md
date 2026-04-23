@@ -18,31 +18,29 @@ and commands into `~/.claude/commands/` via `setup.sh`.
 
 ## Skill Architecture
 
-Each skill is a **self-contained directory** that can be
-copied as-is into any `.claude/skills/` folder:
+Each skill is a single `SKILL.md` that Claude executes using its
+native tools (Bash, Read, Edit, Write, Grep, Agent, Skill). No
+shell-script layer, no JSON IPC, no shared utility library.
+`SKILL.md` contains both the orchestration and the inline commands
+Claude runs — Claude reads tool output directly and decides what
+to do next.
 
 ```
 skills/<name>/
-  SKILL.md       Orchestrator (Claude-driven decisions)
-  scripts/
-    common.sh    Shared utilities (logging, config, JSON)
-    *.sh         Deterministic shell scripts
+  SKILL.md       The whole skill
+  templates/     Optional data assets (e.g. worker prompts)
 ```
 
-Each skill has its own copy of `common.sh`. CI enforces
-all copies stay identical.
-
-### Script Contract
-
-- **Input**: CLI args + env vars (no interactive input)
-- **Output**: JSON on stdout, logs on stderr
-- **Exit codes**: 0=success, 1=recoverable, 2=fatal
-- **Source**: `source "$(dirname "$0")/common.sh"` (scripts are co-located in `scripts/`)
+Exception: `skills/orchestrate/` still uses `scripts/` for its
+bd-backed state tracking and session plumbing — it is the
+supervisor-pattern workflow and has its own architecture.
 
 ### Per-Repo Config
 
-Skills read `.claude/config.yaml` from the current repo for
-overrides. All values are optional with sensible defaults.
+Skills read `.claude/config.yaml` from the current repo via
+the Read tool (or `yq` inside inline Bash). Keys are flat
+two-level (`<section>.<key>`); all values are optional with
+sensible defaults documented in each `SKILL.md`.
 
 ### Drop-in Skills
 

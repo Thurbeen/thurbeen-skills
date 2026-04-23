@@ -40,85 +40,93 @@ Do **not** rewrite code unrelated to a finding.
 
 ### Setup
 
+Read optional overrides from `.claude/config.yaml` (defaults shown):
+
 ```bash
-SKILL_DIR="$(cd "$(dirname "$(readlink -f ~/.claude/skills/code-security/SKILL.md)")" && pwd)"
+EXCLUDE_PATHS="$(yq    -r '.["code-security"].exclude_paths          // [] | join(" ")' .claude/config.yaml 2>/dev/null)"
+SEVERITY_FLOOR="$(yq   -r '.["code-security"].severity_floor         // "low"'           .claude/config.yaml 2>/dev/null)"
+AUTO_FIX_MAX="$(yq     -r '.["code-security"].auto_fix_max_severity  // "medium"'        .claude/config.yaml 2>/dev/null)"
 ```
 
-Read optional overrides from `.claude/config.yaml`:
-
-- `code-security.exclude_paths` — glob list (vendored/generated code).
-- `code-security.severity_floor` — min severity to surface (default
-  `low`). One of: `info|low|medium|high|critical`.
-- `code-security.auto_fix_max_severity` — severities fixed without
-  asking (default `medium`; `high`/`critical` always prompt).
+Severities: `info` < `low` < `medium` < `high` < `critical`.
+`high`/`critical` always prompt before fixing.
 
 ---
 
-### Phase -1 — Detect Repos (multi-repo mode only)
+### Phase -1 — Detect repos (multi-repo mode only)
 
-Skip this phase unless `$ARGUMENTS` contains `all`.
+Skip unless `$ARGUMENTS` contains `all`.
 
-Use the Agent tool to discover all git repositories with pending
-changes across directories this session is allowed to access.
+Use the Agent tool to discover every git repo with pending changes
+across the directories this session is allowed to access.
 
-Spawn an agent with the following task:
-
-> List the directories this Claude Code session is allowed to
-> access. For each allowed directory, check whether it is a git
-> repository (has a `.git` directory) or contains git repos one
-> level deep.
+> List the directories this Claude Code session is allowed to access.
+> For each, check whether it is a git repo (has a `.git` directory) or
+> contains git repos one level deep.
 >
 > A repo has pending changes if it is on a feature branch (not the
-> default branch) AND has either uncommitted changes or commits
-> ahead of the default branch.
+> default branch) AND has either uncommitted changes or commits ahead
+> of the default branch.
 >
-> For each such repo, report: path (absolute), name, current
-> branch, default branch.
->
-> Skip repos on their default branch with no changes.
+> For each such repo, report: absolute path, basename, current branch,
+> default branch. Skip repos on their default branch with no changes.
 
-If no repos have pending changes → STOP: "No repos with pending
-changes found."
+If no repos qualify → STOP: "No repos with pending changes found."
 
-For each detected repo, `cd "<repo.path>"` and execute Phases 0–5
-sequentially. Collect per-repo results and emit a combined summary
-at the end (one block per repo, same shape as Phase 5).
+For each repo, `cd "<repo.path>"` and execute Phases 0–5 sequentially.
+Collect per-repo results and emit a combined summary at the end (one
+block per repo, same shape as Phase 5).
 
 ---
 
 ### Phase 0 — Pre-flight
 
 ```bash
-bash "$SKILL_DIR/scripts/preflight.sh"
+git rev-parse --git-dir >/dev/null 2>&1 || { echo "not a git repo"; exit 1; }
+
+DEFAULT_BRANCH="$(git remote show origin | awk '/HEAD branch/ {print $NF}')"
+CURRENT_BRANCH="$(git branch --show-current)"
+[[ "$CURRENT_BRANCH" == "$DEFAULT_BRANCH" ]] && { echo "on default branch"; exit 1; }
+
+COMMITS_AHEAD="$(git rev-list --count "origin/${DEFAULT_BRANCH}..HEAD" 2>/dev/null || echo 0)"
+UNCOMMITTED="$(git status --porcelain | wc -l | tr -d ' ')"
+[[ "$COMMITS_AHEAD" -eq 0 && "$UNCOMMITTED" -eq 0 ]] && { echo "no pending changes"; exit 1; }
 ```
 
-Parse JSON. If exit code 2 → STOP: report `error`. Save
-`default_branch` and `current_branch`.
+Save `DEFAULT_BRANCH` and `CURRENT_BRANCH` for later phases.
 
 ---
 
-### Phase 1 — Collect Diff
+### Phase 1 — Collect diff
+
+Diff the working tree (including uncommitted changes) against the
+default branch. Write the full diff to a temp file and list the
+changed paths.
 
 ```bash
-bash "$SKILL_DIR/scripts/collect-diff.sh"
+BASE="origin/${DEFAULT_BRANCH}"
+git rev-parse --verify "$BASE" >/dev/null 2>&1 || BASE="$DEFAULT_BRANCH"
+
+DIFF_FILE="$(mktemp -t code-security-diff.XXXXXX)"
+git diff "$BASE" > "$DIFF_FILE"
+CHANGED_FILES=( $(git diff --name-only "$BASE") )
+LINE_COUNT="$(wc -l < "$DIFF_FILE" | tr -d ' ')"
 ```
 
-Parse JSON. Save `diff_file`, `changed_files`, `line_count`.
+If `LINE_COUNT` is 0 → STOP: "No pending changes to review."
 
-If `line_count` is 0 → STOP: "No pending changes to review."
-
-If `changed_files` is entirely under `exclude_paths` → STOP.
+If every changed file matches an entry in `EXCLUDE_PATHS` → STOP.
 
 ---
 
-### Phase 2 — Security Review
+### Phase 2 — Security review
 
-Spawn **one Agent** (subagent_type: `Explore`, thoroughness `medium`)
+Spawn **one Agent** (`subagent_type: Explore`, thoroughness `medium`)
 with a self-contained prompt. The agent has not seen this session.
 
 Prompt it with:
 
-- The absolute path to `diff_file` and the list of `changed_files`.
+- The absolute path to `DIFF_FILE` and the list of `CHANGED_FILES`.
 - The in-scope categories listed above, verbatim.
 - The explicit non-goals (no perf/style/refactor findings).
 - The request: read the diff, then read surrounding context from the
@@ -131,7 +139,7 @@ Prompt it with:
     "file": "<path>",
     "line": <int or null>,
     "title": "<short>",
-    "explanation": "<why this is exploitable, 1-3 sentences>",
+    "explanation": "<why this is exploitable, 1–3 sentences>",
     "fix": "<concrete suggested change>",
     "confidence": "high|medium|low"
   }
@@ -140,7 +148,7 @@ Prompt it with:
   prose wrapper under 100 words — the JSON is what matters.
 
 Parse the findings array. Drop findings whose severity is below
-`severity_floor`.
+`SEVERITY_FLOOR`.
 
 ---
 
@@ -149,13 +157,13 @@ Parse the findings array. Drop findings whose severity is below
 Group findings by severity (critical → info). For each, decide:
 
 - **fix** — clear, local, exploit path obvious.
-- **skip (false positive)** — explain to the user why.
+- **skip (false positive)** — explain why.
 - **defer (needs user)** — ambiguous, architectural, or requires
   domain knowledge.
 
-For severities above `auto_fix_max_severity`, ask the user before
-applying the fix (use AskUserQuestion with the finding's
-title + explanation + proposed fix).
+For severities above `AUTO_FIX_MAX`, ask the user before applying the
+fix (AskUserQuestion with the finding's title + explanation + proposed
+fix).
 
 Present the grouped findings to the user as a brief summary before
 editing.
@@ -172,16 +180,20 @@ For each finding marked **fix**:
 3. If the fix requires a new dependency or config change, mark it
    **defer** instead and surface it to the user.
 
-After edits, re-run on just the touched files:
+After edits, re-diff just the touched files and re-run Phase 2 scoped
+to the new diff:
 
 ```bash
-bash "$SKILL_DIR/scripts/collect-diff.sh" <file1> <file2> ...
+DIFF_FILE="$(mktemp -t code-security-diff.XXXXXX)"
+git diff "$BASE" -- <file1> <file2> ... > "$DIFF_FILE"
 ```
 
-Spawn a second Agent (same prompt shape) scoped to the new diff to
-confirm (a) the original issues are resolved and (b) no new findings
-were introduced. If new issues appear, loop once through Phase 3–4;
-beyond that, defer to the user.
+Spawn a second Agent (same prompt shape) to confirm:
+(a) the original issues are resolved, and
+(b) no new findings were introduced.
+
+If new issues appear, loop once through Phase 3–4; beyond that, defer
+to the user.
 
 ---
 

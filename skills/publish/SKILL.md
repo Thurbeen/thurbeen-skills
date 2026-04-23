@@ -11,7 +11,7 @@ Refactor recent changes, ship them as PRs with auto-merge, then watch CI
 until each PR merges (or hard-stops). Operates on every git repo with
 publishable changes that this session can reach.
 
-**Do not stop mid-flow.** Phases 1–4 run to completion for every repo
+**Do not stop mid-flow.** Phases 1–3 run to completion for every repo
 detected in Phase 0. Sub-commands like `/refactor` produce their own
 summaries — those are intermediate, never terminal. The only terminal
 output is the Final Output section at the end.
@@ -19,16 +19,8 @@ output is the Final Output section at the end.
 **Input:** `$ARGUMENTS` optionally describes what was done (used for the
 commit message and PR description).
 
-The only shell helper this skill calls is `ship.sh`, which performs the
-atomic commit → rebase → push → PR → auto-merge sequence (also reused by
-the `bump-pr-fixer` and `infra-monitor` skills). Resolve it once:
-
-```bash
-SHIP="$(cd "$(dirname "$(readlink -f ~/.claude/skills/publish/SKILL.md)")" && pwd)/scripts/ship.sh"
-```
-
-Everything else is plain `git` / `gh` / `yq` invocations Claude runs
-directly through Bash.
+Everything this skill does is plain `git` / `gh` / `yq` invocations
+Claude runs directly through Bash, plus the Agent and Edit tools.
 
 ---
 
@@ -51,7 +43,7 @@ across the directories this session is allowed to access.
 
 If no repos qualify → STOP: "No repos with publishable changes found."
 
-For each repo in the list, `cd` into its path and run Phases 1–4
+For each repo in the list, `cd` into its path and run Phases 1–3
 **sequentially**.
 
 ---
@@ -84,15 +76,71 @@ Craft a conventional-commit message. If `$ARGUMENTS` was provided and
 there is only one repo, use it. For multi-repo runs, infer type and
 scope from each repo's diff independently.
 
+Read config (defaults shown):
+
 ```bash
-"$SHIP" --message "<conventional commit message>"
+AUTO_MERGE="$(yq -r   '.ship.auto_merge // true'      .claude/config.yaml 2>/dev/null)"
+MERGE_METHOD="$(yq -r '.publish.merge_method // "rebase"' .claude/config.yaml 2>/dev/null)"
 ```
 
-Parse the JSON output:
-- `rebase: "conflict"` → record the conflict, skip remaining phases for
-  this repo, continue with next repo.
-- `error` → record, skip, continue.
-- Otherwise save `pr.url` and `default_branch` for Phase 3.
+Detect branches and abort if we landed on default:
+
+```bash
+DEFAULT_BRANCH="$(git remote show origin | awk '/HEAD branch/ {print $NF}')"
+CURRENT_BRANCH="$(git branch --show-current)"
+[[ "$CURRENT_BRANCH" == "$DEFAULT_BRANCH" ]] && { echo "on default branch"; continue; }
+```
+
+**Stage & commit.** Add tracked + untracked changes, then unstage common
+secret paths. Skip committing if there is nothing staged.
+
+```bash
+git add -A
+git reset HEAD -- '*.env' '*credentials*' '*.key' '*.pem' 2>/dev/null || true
+git diff --cached --quiet || git commit -m "<conventional commit message>"
+```
+
+**Rebase.** On conflict: abort, record `conflict_files` from
+`git diff --name-only --diff-filter=U`, skip remaining phases for this
+repo, continue with the next.
+
+```bash
+git fetch origin
+git rebase "origin/${DEFAULT_BRANCH}"   # || git rebase --abort && record conflict
+```
+
+**Push.**
+
+```bash
+git push --force-with-lease origin HEAD
+```
+
+**Ensure PR.** If `gh pr view` returns nothing, create one. Title:
+truncate the commit message to 70 chars.
+
+```bash
+gh pr view --json url,title,state 2>/dev/null \
+  || gh pr create --title "<title:0..70>" --body "$(cat <<'EOF'
+## Summary
+
+<1–3 bullets describing the change>
+
+## Test plan
+
+- CI checks pass
+EOF
+)"
+```
+
+**Auto-merge.** Only if `AUTO_MERGE == "true"`:
+
+```bash
+gh pr merge --auto --"${MERGE_METHOD}" 2>/dev/null \
+  && echo "auto-merge enabled" \
+  || echo "auto-merge not configured"
+```
+
+Save `pr.url`, `default_branch`, and the merge state for Phase 3.
 
 ---
 
@@ -151,16 +199,16 @@ for c in failed:
     run_id = trailing path segment of c.detailsUrl
     gh run view <run_id> --log-failed
     diagnose root cause and apply fixes (Edit/Write)
-
-"$SHIP" --message "fix: resolve CI failure"
-wait_s = 30
-continue monitor loop
 ```
+
+Then re-ship (same inline sequence as Phase 2): stage, commit with
+`fix: resolve CI failure`, rebase, push. Reset `wait_s = 30` and
+continue the monitor loop.
 
 #### Validate step (after merge)
 
 Poll deployment workflows on the default branch (max 5 rounds, 30s
-apart). Default branch came from Phase 2's ship JSON — fall back to
+apart). Default branch came from Phase 2 — fall back to
 `gh repo view --json defaultBranchRef -q .defaultBranchRef.name`.
 
 ```bash
