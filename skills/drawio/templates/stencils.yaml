@@ -1,0 +1,129 @@
+# Curated DrawIO cloud-service catalog for the `drawio` skill.
+#
+# One provider in v1: Azure (image-based). AWS and GCP are out of
+# scope — AWS was dropped in v2; GCP never made it because drawio
+# inlines its GCP icons as base64 data-URIs with no stable ids.
+#
+# `azure.style_template` has a `{path}` placeholder the skill
+# substitutes per cell. Per-cell knobs that vary (geometry, label,
+# parent) are NOT in the template — they live on the mxCell itself.
+
+azure:
+  # Azure cells point at SVGs that ship inside the drawio webapp,
+  # so consumers don't need to install anything extra. The dominant
+  # convention is `image=img/lib/azure2/<category>/<File>.svg`.
+  # Sidebar names map to filenames as Title_Case_With_Underscores
+  # (acronyms preserved: SQL_Database.svg, Azure_AD_B2C.svg).
+  style_template: "aspect=fixed;html=1;points=[];align=center;image;fontSize=12;image={path};labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;"
+  default_size: { width: 64, height: 64 }
+  services:
+    # --- compute ---
+    virtual_machine:          compute/Virtual_Machine.svg
+    vm_scale_sets:            compute/VM_Scale_Sets.svg
+    availability_sets:        compute/Availability_Sets.svg
+    function_apps:            compute/Function_Apps.svg
+    container_instances:      compute/Container_Instances.svg
+    batch_accounts:           compute/Batch_Accounts.svg
+    service_fabric:           compute/Service_Fabric_Clusters.svg
+    disks:                    compute/Disks.svg
+    # --- app_services ---
+    app_services:             app_services/App_Services.svg
+    app_service_plans:        app_services/App_Service_Plans.svg
+    app_service_environments: app_services/App_Service_Environments.svg
+    search_services:          app_services/Search_Services.svg
+    # --- containers ---
+    container_registries:     containers/Container_Registries.svg
+    aks:                      containers/Kubernetes_Services.svg
+    openshift:                containers/Azure_Red_Hat_OpenShift.svg
+    # --- databases ---
+    sql_database:             databases/SQL_Database.svg
+    sql_managed_instance:     databases/SQL_Managed_Instance.svg
+    cosmos_db:                databases/Azure_Cosmos_DB.svg
+    redis_cache:              databases/Cache_Redis.svg
+    mysql:                    databases/Azure_Database_MySQL_Server.svg
+    postgresql:               databases/Azure_Database_PostgreSQL_Server.svg
+    mariadb:                  databases/Azure_Database_MariaDB_Server.svg
+    synapse:                  databases/Azure_Synapse_Analytics.svg
+    data_factory:             databases/Data_Factory.svg
+    data_explorer_clusters:   databases/Azure_Data_Explorer_Clusters.svg
+    purview_accounts:         databases/Azure_Purview_Accounts.svg
+    # --- networking ---
+    virtual_networks:         networking/Virtual_Networks.svg
+    subnet:                   networking/Subnet.svg
+    load_balancers:           networking/Load_Balancers.svg
+    application_gateway:      networking/Application_Gateways.svg
+    front_doors:              networking/Front_Doors.svg
+    traffic_manager:          networking/Traffic_Manager_Profiles.svg
+    cdn:                      networking/CDN_Profiles.svg
+    dns_zones:                networking/DNS_Zones.svg
+    private_endpoint:         networking/Private_Endpoint.svg
+    private_link:             networking/Private_Link.svg
+    nsg:                      networking/Network_Security_Groups.svg
+    firewall:                 networking/Firewalls.svg
+    bastion:                  networking/Bastions.svg
+    expressroute:             networking/ExpressRoute_Circuits.svg
+    vpn_gateway:              networking/Virtual_Network_Gateways.svg
+    nat_gateways:             networking/NAT.svg
+    route_tables:             networking/Route_Tables.svg
+    network_watcher:          networking/Network_Watcher.svg
+    waf_policies:             networking/Web_Application_Firewall_Policies_WAF.svg
+    # --- storage ---
+    storage_accounts:         storage/Storage_Accounts.svg
+    azure_files:              storage/Azure_Fileshare.svg
+    netapp_files:             storage/Azure_NetApp_Files.svg
+    data_lake_gen1:           storage/Data_Lake_Storage_Gen1.svg
+    recovery_vaults:          storage/Recovery_Services_Vaults.svg
+    # --- identity ---
+    entra_id:                 identity/Azure_Active_Directory.svg
+    ad_b2c:                   identity/Azure_AD_B2C.svg
+    managed_identities:       identity/Managed_Identities.svg
+    pim:                      identity/Azure_AD_Privilege_Identity_Management.svg
+    enterprise_apps:          identity/Enterprise_Applications.svg
+    # --- security ---
+    key_vaults:               security/Key_Vaults.svg
+    sentinel:                 security/Azure_Sentinel.svg
+    defender:                 security/Azure_Defender.svg
+    security_center:          security/Security_Center.svg
+    conditional_access:       security/Conditional_Access.svg
+    # --- integration / messaging ---
+    service_bus:              integration/Service_Bus.svg
+    event_grid_topics:        integration/Event_Grid_Topics.svg
+    event_grid_subs:          integration/Event_Grid_Subscriptions.svg
+    logic_apps:               integration/Logic_Apps.svg
+    api_management:           integration/API_Management_Services.svg
+    app_configuration:        integration/App_Configuration.svg
+    # --- monitor / governance ---
+    monitor:                  management_governance/Monitor.svg
+    log_analytics:            management_governance/Log_Analytics_Workspaces.svg
+    app_insights:             management_governance/Application_Insights.svg
+    alerts:                   management_governance/Alerts.svg
+    policy:                   management_governance/Policy.svg
+    cost_management:          management_governance/Cost_Management_and_Billing.svg
+    automation:               management_governance/Automation_Accounts.svg
+    azure_arc:                management_governance/Azure_Arc.svg
+    blueprints:               management_governance/Blueprints.svg
+    # --- analytics ---
+    event_hubs:               analytics/Event_Hubs.svg
+    stream_analytics:         analytics/Stream_Analytics_Jobs.svg
+    databricks:               analytics/Azure_Databricks.svg
+    # --- general ---
+    resource_groups:          general/Resource_Groups.svg
+    subscriptions:            general/Subscriptions.svg
+    # --- ai_machine_learning ---
+    ai_foundry:               ai_machine_learning/AI_Studio.svg
+    azure_openai:             ai_machine_learning/Azure_OpenAI.svg
+    cognitive_services:       ai_machine_learning/Cognitive_Services.svg
+    machine_learning:         ai_machine_learning/Machine_Learning.svg
+    ml_studio_workspaces:     ai_machine_learning/Machine_Learning_Studio_Workspaces.svg
+    # ai_search aliases search_services — the azure2 bundle has no
+    # dedicated AI Search glyph, so we reuse the Search Services icon.
+    ai_search:                app_services/Search_Services.svg
+    bot_services:             ai_machine_learning/Bot_Services.svg
+    # --- devops ---
+    azure_devops:             devops/Azure_DevOps.svg
+  # Legacy shape= fallbacks for primitives that have nicer renders
+  # via mxgraph.azure.* than the azure2 SVGs.
+  legacy_shapes:
+    storage_blob:           "shape=mxgraph.azure.storage_blob;verticalLabelPosition=bottom;html=1;verticalAlign=top;align=center;strokeColor=none;fillColor=#00BEF2;labelBackgroundColor=none;"
+    storage_queue:          "shape=mxgraph.azure.storage_queue;verticalLabelPosition=top;html=1;verticalAlign=bottom;align=center;strokeColor=none;fillColor=#00BEF2;labelPosition=center;labelBackgroundColor=none;"
+    storage_table:          "shape=mxgraph.azure.storage_table;verticalLabelPosition=bottom;html=1;verticalAlign=top;align=center;strokeColor=none;fillColor=#00BEF2;labelBackgroundColor=none;"
