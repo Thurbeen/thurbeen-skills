@@ -1,19 +1,19 @@
 ---
 name: drawio
-description: Generate a DrawIO Azure cloud-architecture diagram from a natural-language description. Always writes a `.drawio.png` — a PNG with the editable mxfile XML embedded in a PNG text chunk, so the same file renders inline in markdown and opens as an editable diagram in app.diagrams.net or drawio-desktop. AWS and GCP are not supported in v1.
+description: Generate a DrawIO cloud-architecture diagram (generic, Azure, or AWS) from a natural-language description. Always writes a `.drawio.png` — a PNG with the editable mxfile XML embedded in a PNG text chunk, so the same file renders inline in markdown and opens as an editable diagram in app.diagrams.net or drawio-desktop. Provider is auto-detected from the description; GCP is not supported.
 user-invocable: true
 allowed-tools: Read, Edit, Write, Bash, Glob, Grep
 ---
 
 ## DrawIO
 
-Turn a natural-language Azure architecture description into a
+Turn a natural-language architecture description into a
 `.drawio.png` that you can drop straight into a README. The PNG
 carries the editable mxfile XML inside a PNG text chunk
 (drawio-desktop writes `zTXt`/`mxGraphModel`; app.diagrams.net writes
 `tEXt`/`mxfile` — both forms are accepted on re-open), so drag-drop
 into app.diagrams.net or the drawio VS Code extension re-opens it as
-a fully editable diagram with real Azure icons.
+a fully editable diagram.
 
 **Input:** `$ARGUMENTS` is a free-form description. An optional
 trailing `→ <path>.drawio.png` (or `-> <path>.drawio.png`) overrides
@@ -21,15 +21,29 @@ the output path. Defaults to `./diagram.drawio.png`.
 
 **Output:** a single `.drawio.png` file at the resolved path.
 
-**Provider in v1:** Azure (image-based, `img/lib/azure2/...`). AWS
-and GCP are out of scope and refused in Phase 0.
+**Providers:** three catalogs live in `templates/stencils.yaml`:
+
+- `generic` (default) — provider-neutral drawio shapes (cylinder
+  for DB, hexagon for API gateway, cloud for external, etc.). No
+  vendor branding; labels carry the meaning (e.g. "PostgreSQL").
+- `azure` — image-based, `img/lib/azure2/...` SVGs. Triggered when
+  the description names Azure services (e.g. "App Service",
+  "Cosmos DB", "Front Door").
+- `aws` — shape-based, `mxgraph.aws4.*`. Triggered when the
+  description names AWS services (e.g. "EC2", "Lambda", "RDS").
+
+The provider is auto-detected in Phase 0.5; ambiguous descriptions
+(mixing Azure and AWS) prompt the user. GCP is refused in Phase 0
+— drawio inlines its GCP icons as base64 data-URIs with no stable
+ids, so we point users to generic shapes instead.
 
 ### Inputs you should expect
 
-- "A web app behind a load balancer, talking to a SQL database, with
-  monitoring" → Azure is assumed; map services to the closest Azure
-  equivalents.
+- "A web app behind a load balancer, talking to a PostgreSQL database,
+  with monitoring" → no provider keywords → `generic`.
 - "Azure: Front Door → App Service → Cosmos DB → Azure Monitor."
+  → `azure`.
+- "ALB → EC2 → RDS, with CloudWatch alerts." → `aws`.
 - A path override: `... → docs/architecture.drawio.png`.
 
 ---
@@ -61,20 +75,63 @@ Resolve the output path from `$ARGUMENTS`:
 - Otherwise default to `./diagram.drawio.png`.
 - Refuse to proceed unless the resolved path ends in `.drawio.png`.
 
-**Refuse AWS-only or GCP-only requests** (substring match on
-`aws`, `ec2`, `s3`, `lambda`, `rds`, `route 53`, `cloudfront`,
-`alb`, `nlb`, `vpc`, `iam`, `gcp`, `google cloud`,
-`compute engine`, `bigquery`, `pub/sub`) with:
+**Refuse GCP-only requests** (substring match on
+`gcp`, `google cloud`, `bigquery`, `gke`, `cloud run`, `pub/sub`,
+`compute engine`, `cloud spanner`, `vertex ai`) with:
 
-> "AWS and GCP are not supported in v1 — this skill emits Azure
-> stencils only. Use Azure resources, or render non-Azure
-> components as plain labeled rectangles by passing
-> `--allow-fallback` (out of scope for v1)."
+> "GCP isn't supported — drawio inlines its GCP icons as base64
+> data-URIs with no stable ids, so this skill can't reliably emit
+> them. Re-describe the architecture using generic shapes (e.g.
+> 'load balancer', 'database', 'queue') or with Azure/AWS service
+> names, and the skill will pick the right catalog automatically."
 
-If the description mixes Azure with isolated AWS/GCP references
-(e.g. "Azure App Service that calls an external S3 bucket"), proceed
-with Azure and treat the external service as out-of-scope text only —
-do not try to render an AWS icon.
+If the description mixes GCP with Azure or AWS, drop the GCP names
+and proceed with the dominant provider; mention the dropped services
+in the Phase 6 report so the user knows they were omitted.
+
+---
+
+### Phase 0.5 — Provider detection
+
+Resolve `$PROVIDER ∈ {generic, azure, aws}` from `$ARGUMENTS`
+before any catalog lookup. The detected provider drives Phase 1
+(catalog mapping, scope words), Phase 1.7 (`nodes[].key` prefix),
+Phase 1.8 (validation lookup), Phase 2 (accent gateway choice),
+and Phase 3 (style emission).
+
+**Keyword lists** (case-insensitive; short tokens are
+word-boundary anchored to avoid false positives):
+
+- **Azure** (strong): `azure`, `vnet`, `app service`, `front door`,
+  `cosmos`, `entra`, `aad`, `aks`, `key vault`, `expressroute`,
+  `landing zone`, `application gateway`, `service bus`,
+  `event hubs`, `log analytics`, `app insights`, `synapse`,
+  `data factory`, `defender for cloud`, `sentinel`, `azure ad`,
+  `resource group`.
+- **AWS** (strong): `aws`, `\bec2\b`, `\bs3\b`, `\blambda\b`,
+  `\brds\b`, `dynamodb`, `route 53`, `cloudfront`, `\balb\b`,
+  `\bnlb\b`, `cloudwatch`, `\bvpc\b`, `\biam\b`, `\bsqs\b`,
+  `\bsns\b`, `eventbridge`, `step functions`, `glue`, `athena`,
+  `redshift`, `\beks\b`, `\becs\b`, `fargate`, `kinesis`.
+  `api gateway` counts for AWS *only when at least one other AWS
+  hit co-occurs* (otherwise it's a generic concept).
+
+**Resolution rules:**
+
+1. ≥1 Azure hit AND 0 AWS hits → `$PROVIDER = azure`.
+2. ≥1 AWS hit AND 0 Azure hits → `$PROVIDER = aws`.
+3. Hits on both providers → call `AskUserQuestion` with three
+   options ("Azure", "AWS", "Generic / mix"). The "Generic / mix"
+   choice falls to `generic` and the named services render as
+   their nearest generic-catalog equivalent (or a plain labeled
+   rectangle if no match).
+4. 0 hits on either → `$PROVIDER = generic` (the default).
+
+Persist `$PROVIDER` in memory for the rest of the run; do NOT
+re-detect later.
+
+If `$ARGUMENTS` contains the substring `debug`, print
+`Provider: $PROVIDER` to stdout before proceeding.
 
 ---
 
@@ -85,31 +142,46 @@ absolute path; the skill is symlinked from `~/.claude/skills/drawio/`
 to its source — resolve the symlink with `readlink -f` if you need
 the real path).
 
-Phase 1 assumes Azure. From `$ARGUMENTS`:
+All catalog work below operates on `stencils.yaml.$PROVIDER` (where
+`$PROVIDER` was resolved in Phase 0.5). From `$ARGUMENTS`:
 
 1. **Map services to catalog keys.** For each service named in the
-   description, find its key in the catalog (e.g. "Function App" →
-   `azure.function_apps`, "Front Door" → `azure.front_doors`). If a
-   service isn't in the catalog, ask the user whether to skip it or
-   pick a near match; never silently invent a new stencil id.
+   description, find its key in `stencils.yaml.$PROVIDER.services`.
+   Examples by provider:
+   - `azure`: "Function App" → `azure.function_apps`,
+     "Front Door" → `azure.front_doors`.
+   - `aws`: "EC2" → `aws.ec2`, "Lambda" → `aws.lambda`,
+     "RDS" → `aws.rds`.
+   - `generic`: "PostgreSQL database" → `generic.database`,
+     "API Gateway" → `generic.api_gateway`, "Redis cache" →
+     `generic.cache`. The label carries the specific name
+     (e.g. value="PostgreSQL"); the stencil is generic.
+   If a service isn't in the chosen catalog, ask the user whether
+   to skip it or pick a near match; never silently invent a new
+   stencil id.
 2. **Enumerate edges.** Walk the description and list
    `(source_key, target_key, label?, kind)` tuples. `kind` is
    `data` (default), `control` (telemetry, auth, DNS, audit), or
    `peering` (bidirectional links: VNet peering, two-way
    replication, mTLS service-mesh).
-3. **Identify containers.** Scan the description for **Azure scope
-   words** that imply a zone: `vnet`, `virtual network`, `subnet`,
-   `landing zone`, `hub`, `spoke`, `resource group`, `subscription`,
-   `region`, `management group`, `tenant`. Every container becomes
-   a zone in Phase 2.
+3. **Identify containers.** Scan the description for **scope words**
+   that imply a zone. The list varies by provider:
+   - `azure`: `vnet`, `virtual network`, `subnet`, `landing zone`,
+     `hub`, `spoke`, `resource group`, `subscription`, `region`,
+     `management group`, `tenant`.
+   - `aws`: `vpc`, `subnet`, `availability zone`, `\baz\b`,
+     `region`, `account`, `organization`, `ou`, `landing zone`.
+   - `generic`: `zone`, `tier`, `region`, `network`, `cluster`,
+     `environment`, `segment`.
+   Every container becomes a zone in Phase 2.
 4. **Assign each non-container node a tier.** Tiers drive row
-   placement *inside* a zone:
+   placement *inside* a zone and are provider-neutral:
    `ingress` (DNS, CDN, WAF, LB, API gateway) →
    `compute` (VMs, containers, functions, app services) →
    `data` (DBs, caches, queues, storage) →
    `observability` (monitor, logs, traces) →
-   `identity` (Entra, managed identities) →
-   `security` (Key Vault, firewall, Defender).
+   `identity` (Entra/IAM/identity providers) →
+   `security` (Key Vault/KMS/secrets, firewall, threat detection).
 
 Hold this model in mind for Phase 1.5–1.9. Don't ask the user to
 review it unless you had to make a genuinely ambiguous choice.
@@ -145,15 +217,15 @@ For each question, mark the option that matches the skill's Phase
 Accents question.
 
 **Question 1 — Diagram type.** What kind of diagram?
-- Infrastructure (Azure resources + network)
+- Infrastructure (cloud resources + network)
 - Application architecture (services, APIs, data flows)
 - Data flow (sources → transforms → sinks, telemetry pipelines)
-- Network topology (VNets, subnets, peering, routing)
+- Network topology (VPCs/VNets, subnets, peering, routing)
 
 (The diagram type narrows icon emphasis and edge semantics. For
 *application*, deemphasize network appliances; for *data flow*,
 use directional arrows everywhere and minimize containers; for
-*network*, foreground VNets / subnets / peering edges.)
+*network*, foreground network containers and peering edges.)
 
 **Question 2 — Grouping.** How should resources be grouped?
 - The grouping I inferred (list the zones from Phase 1 in the
@@ -175,12 +247,14 @@ list before Phase 1.7. If "Flat", drop all zones entirely.
 boxes checked). Add any of these decorative elements?
 - `Internet icon` — external entry point at the left edge, with
   dashed `DNS Lookup` and `Authentication` edges to public services
-- `Resource Group icon` — small Azure resource group glyph at the
-  bottom-left
+- `Resource Group icon` — small grouping glyph at the bottom-left
+  (Azure-only; ignored for other providers)
 - `On-prem / hybrid entry point` — labeled rectangle representing
-  on-prem datacenter, connected to a VPN Gateway or ExpressRoute
-- `Region / subscription wireframe` — outer dashed boundary
-  enclosing everything
+  an on-prem datacenter, connected to the provider's hybrid-
+  connectivity node (see Phase 2 Step D for the per-provider rule)
+- `Region / account wireframe` — outer dashed boundary enclosing
+  everything (Azure region/subscription, AWS account/region,
+  or generic environment)
 
 **Without explicit opt-in, none of these are emitted.** This
 reverses the previous auto-add-when-N-S-traffic-mentioned
@@ -205,7 +279,8 @@ heuristic, which surprised users by inserting unwanted icons.
     edges to whatever the user's services labeled "public" /
     "ingress" / "DNS" / "auth".
   - Resource Group → top-level 36×36 icon at the bottom-left.
-  - On-prem → top-level labeled rectangle, connect via VPN GW.
+  - On-prem → top-level labeled rectangle; Phase 2 Step D picks
+    the connecting node based on `$PROVIDER`.
   - Wireframe → outer Layer A rectangle (variant: `fillColor=none`).
 - *Edge density*: if "Data plane only", drop every `kind=control`
   edge. If "Bundle aggressively", set a flag for Phase 1.9 to also
@@ -273,7 +348,7 @@ Build the following JSON object in memory (no file write):
       "fill": "soft_gray" }
   ],
   "nodes": [
-    { "id": "N1", "key": "azure.front_doors", "label": "Front Door",
+    { "id": "N1", "key": "<provider>.front_doors", "label": "Front Door",
       "tier": "ingress", "zone": "Z1", "group": null }
   ],
   "groups": [
@@ -295,10 +370,14 @@ Field rules:
   Tenant → MG → Sub → RG → VNet → Subnet collapses if the user
   doesn't ask for all six levels — keep ≤4 visible levels).
 - `nodes[].key` MUST be a key present in `stencils.yaml`, written
-  as `<provider>.<service>` (e.g. `azure.front_doors`,
-  `azure.storage_blob`). The provider prefix is stripped before the
-  yq lookup against `azure.services` or `azure.legacy_shapes`. Use
-  legacy shapes for storage primitives (blob/queue/table).
+  as `<provider>.<service>` where `<provider>` is the run's
+  `$PROVIDER` (one of `generic`, `azure`, `aws`). Examples:
+  `generic.database`, `azure.front_doors`, `aws.ec2`. The provider
+  prefix is stripped before the catalog lookup against
+  `stencils.yaml.<provider>.services` (Azure also checks
+  `legacy_shapes` for storage primitives blob/queue/table).
+  All nodes in a single diagram share one provider — do not mix
+  `azure.*` and `aws.*` in the same scene graph.
 - `nodes[].tier` is one of `ingress`, `compute`, `data`,
   `observability`, `identity`, `security`. Phase 2 uses it for
   ordering inside a zone.
@@ -324,8 +403,10 @@ Run these self-checks against the JSON from Phase 1.7. If any check
 fails, fix the JSON and re-run validation. Do NOT proceed to Phase
 1.9 with a broken scene graph.
 
-1. Every `nodes[].key` exists in `stencils.yaml.azure.services` or
-   `stencils.yaml.azure.legacy_shapes`.
+1. Every `nodes[].key` exists in
+   `stencils.yaml.<$PROVIDER>.services` (and for Azure, also
+   `stencils.yaml.azure.legacy_shapes`). All keys share the same
+   provider prefix.
 2. Every `nodes[].zone` is either null or matches a `zones[].id`.
 3. Every `edges[].src` and `edges[].dst` references an existing
    `nodes[].id`.
@@ -335,15 +416,16 @@ fails, fix the JSON and re-run validation. Do NOT proceed to Phase
 6. Node ids, zone ids, group ids, edge ids are unique.
 7. `tier` values are within the allowed enum.
 
-A trivial bash check for #1 (run once `$TMP_GRAPH` holds the JSON):
+A trivial bash check for #1 (run once `$TMP_GRAPH` holds the JSON
+and `$PROVIDER` is set):
 
 ```bash
 yq -r '.. | select(has("key")) | .key' "$TMP_GRAPH" 2>/dev/null \
-  | sed 's/^azure\.//' \
+  | sed "s/^${PROVIDER}\\.//" \
   | while read -r k; do
-      yq -e ".azure.services.$k // .azure.legacy_shapes.$k" \
+      yq -e ".${PROVIDER}.services.$k // .${PROVIDER}.legacy_shapes.$k" \
         "$SKILL_DIR/templates/stencils.yaml" >/dev/null \
-        || { echo "fail: unknown key azure.$k"; exit 1; }
+        || { echo "fail: unknown key ${PROVIDER}.$k"; exit 1; }
     done
 ```
 
@@ -396,9 +478,11 @@ ZONE_GAP   = 60    # between zones
 TITLE_ROOM = 24    # vertical room for floated zone title
 ```
 
-Icon dimensions come from `stencils.yaml.azure.default_size`
-(64×64). Labels render below the icon via the provider's
-`style_template` (already encoded — don't override).
+Icon dimensions come from `stencils.yaml.$PROVIDER.default_size`:
+generic = 60×60, azure = 64×64, aws = 78×78. The packing math
+below uses `icon_w` / `icon_h` as variables — substitute the
+provider's size before layout. Labels render below the icon via
+the provider's template (already encoded — don't override).
 Each cell gets a unique numeric `id` starting at `10` (reserve
 `0` and `1` for the sentinels).
 
@@ -444,8 +528,8 @@ group;labelBackgroundColor=none;strokeColor=none;
 Children of a `group;` cell use coordinates *relative to* the
 group, and inherit drag/move behavior.
 
-**Layer C — Icon cell.** Azure SVG-based style. The icon's
-`parent` is:
+**Layer C — Icon cell.** Style built per-provider in Phase 3
+(image / shape / raw). The icon's `parent` is:
 - `"<group_id>"` if it's inside a Layer B `group;` cluster
   (coords relative to the group), OR
 - `"1"` for everything else (absolute coords).
@@ -482,9 +566,10 @@ For each `zone` in `scene.zones`:
    possible. If a tier has more icons than `cols`, wrap the
    overflow into the next row (still that tier first), then start
    the next tier on the row after that.
-5. Compute zone geometry:
+5. Compute zone geometry (substitute the provider's icon size:
+   generic = 60, azure = 64, aws = 78):
    ```
-   icon_w = icon_h = 64
+   icon_w = icon_h = <provider default_size>
    rows   = ceil(n / cols)
    zone.width  = ZONE_PAD*2 + cols * icon_w + (cols-1) * ICON_GAP
    zone.height = ZONE_PAD*2 + TITLE_ROOM + rows * icon_h + (rows-1) * LAYER_GAP
@@ -524,8 +609,13 @@ For each entry in `scene.accents`:
   zone is null OR zone is the leftmost zone.
 - `resource_group` → 36×36 icon at the bottom-left
   (`x = 40, y = pageHeight - 80`).
-- `onprem` → labeled rectangle 160×60 at top-left, connected to
-  any `vpn_gateway` or `expressroute` node via a solid edge.
+- `onprem` → labeled rectangle 160×60 at top-left, connected via a
+  solid edge to whichever ingress node has provider-canonical
+  hybrid-connectivity semantics:
+  - azure: `vpn_gateway` or `expressroute`.
+  - aws: `direct_connect`, `site_to_site_vpn`, or `transit_gateway`.
+  - generic: `firewall` or `router`.
+  If no such node exists, connect to the leftmost ingress-tier node.
 - `wireframe` → outer Layer A rectangle with `fill = wireframe`
   wrapping all zones plus accents.
 
@@ -543,12 +633,38 @@ If the legend will be emitted (see Phase 3), add 80 px to
 
 ### Phase 3 — Generate mxfile XML
 
-Read `skills/drawio/templates/mxfile.xml.tmpl`. For each Azure icon
-node, build the style string from
-`stencils.yaml.azure.style_template` by substituting `{path}` with
-`img/lib/azure2/<category>/<File>.svg` from the catalog entry. For
-storage primitives, use the catalog's `legacy_shapes` style verbatim
-(`storage_blob`, `storage_queue`, `storage_table`).
+Read `skills/drawio/templates/mxfile.xml.tmpl`. For each icon node,
+build the style string by dispatching on
+`stencils.yaml.$PROVIDER.kind`:
+
+- **`kind == "image_template"` (azure):** read
+  `stencils.yaml.azure.style_template` and substitute `{path}` with
+  `(stencils.yaml.azure.image_prefix) + (services[key])`. The
+  catalog entry is an SVG path like `compute/Function_Apps.svg`;
+  the prefix is `img/lib/azure2/`, so the resulting `image=` value
+  is `img/lib/azure2/compute/Function_Apps.svg`. For storage
+  primitives (`storage_blob`, `storage_queue`, `storage_table`),
+  use the catalog's `legacy_shapes` style verbatim — no template
+  substitution.
+- **`kind == "shape_template"` (aws):** the catalog entry is a
+  `{ shape, category, dedicated? }` map. Pick the template by the
+  `dedicated` flag:
+  - `dedicated: true` → use `dedicated_shape_template`. These
+    services (e.g. `lambda_function`, `bucket_with_objects`,
+    `applicationLoadBalancer`) have their own colored glyph and
+    drop the `resIcon` attribute.
+  - else → use `resource_icon_template` (the colored squircle
+    tile, ~90% of AWS services).
+  In both cases, substitute `{shape}` with `entry.shape` and
+  `{color}` with `categories[entry.category]` (e.g. compute →
+  `#ED7100`). The shape id in the catalog is the bare service
+  name (`ec2`, `rds`); the template prepends `mxgraph.aws4.`
+  for the full drawio shape reference.
+- **`kind == "raw_styles"` (generic):** the catalog entry IS the
+  complete drawio style string. Use it verbatim — no template,
+  no substitution. The `value=` label carries any provider-
+  specific name (e.g. value="PostgreSQL" on a `generic.database`
+  cell).
 
 **Emit a zone rectangle (Layer A)** as:
 
@@ -587,12 +703,14 @@ declare `parent="<G>"` and use coords relative to the group.
 
 ```xml
 <mxCell id="<N>" value="<label>" style="<style>" vertex="1" parent="<P>">
-  <mxGeometry x="<X>" y="<Y>" width="64" height="64" as="geometry"></mxGeometry>
+  <mxGeometry x="<X>" y="<Y>" width="<W>" height="<H>" as="geometry"></mxGeometry>
 </mxCell>
 ```
 
 `<P>` is `"1"` for free-floating icons OR a group id for icons
-inside a Layer B cluster.
+inside a Layer B cluster. `<W>` and `<H>` are the provider's
+`default_size` from `stencils.yaml.$PROVIDER.default_size` —
+generic = 60, azure = 64, aws = 78.
 
 **Edge style strings.** Define these four named styles once and
 reuse them for every edge:
@@ -971,9 +1089,81 @@ Set `edge.bidirectional = true` (and any `kind`; `peering` is
 canonical) when modelling:
 
 - VNet peering (Hub ↔ Spoke A, Hub ↔ Spoke B)
-- Two-way replication (geo-paired SQL, Cosmos DB multi-region writes)
+- VPC peering or Transit Gateway attachments (AWS)
+- Two-way replication (geo-paired SQL, Cosmos DB multi-region writes,
+  DynamoDB global tables)
 - mTLS service-mesh links (App A ↔ App B)
-- ExpressRoute / VPN tunnels (on-prem ↔ Azure)
+- ExpressRoute / Direct Connect / VPN tunnels (on-prem ↔ cloud)
 
 These render with classic arrowheads on both ends in the data-plane
 blue palette.
+
+### AWS three-tier web app (single VPC)
+
+Stacked tier zones inside one VPC, no peering. Triggered by
+descriptions like "ALB → EC2 → RDS, with CloudWatch alerts".
+
+```
+$PROVIDER = aws
+scene.zones = [
+  { id: "ZI", label: "Ingress",       fill: "soft_gray" },
+  { id: "ZC", label: "Compute",       fill: "soft_gray" },
+  { id: "ZD", label: "Data",          fill: "soft_gray" },
+  { id: "ZO", label: "Observability", fill: "soft_gray" },
+]
+scene.orientation = "stacked"
+
+scene.nodes = [
+  { id: "N1", key: "aws.alb",        label: "ALB",        tier: "ingress",       zone: "ZI" },
+  { id: "N2", key: "aws.ec2",        label: "EC2",        tier: "compute",       zone: "ZC" },
+  { id: "N3", key: "aws.rds",        label: "RDS",        tier: "data",          zone: "ZD" },
+  { id: "N4", key: "aws.cloudwatch", label: "CloudWatch", tier: "observability", zone: "ZO" },
+]
+
+scene.edges =
+  • N1 → N2 : kind=data, label "HTTPS"
+  • N2 → N3 : kind=data, label "SQL"
+  • N2 → N4 : kind=control, label "Logs / Metrics"
+```
+
+`aws.alb` and `aws.s3` use the dedicated-shape template (their own
+colored glyph). Everything else uses `resource_icon` — colored
+squircle tiles, category color from `categories[entry.category]`.
+Use `aws` scope words (`vpc`, `subnet`, `availability zone`) only
+when the description names them explicitly; this base recipe has
+no VPC zone because the description didn't ask for one.
+
+### Generic logical architecture (no provider keywords)
+
+Triggered by descriptions like "web app behind an API gateway,
+talking to a database, with a cache and a monitoring stack". No
+vendor branding; labels carry the specific tech names (e.g.
+"PostgreSQL", "Redis").
+
+```
+$PROVIDER = generic
+scene.zones = []   # flat, no zones
+scene.orientation = "auto"
+
+scene.nodes = [
+  { id: "N0", key: "generic.user",        label: "User",         tier: "ingress",       zone: null },
+  { id: "N1", key: "generic.api_gateway", label: "API Gateway",  tier: "ingress",       zone: null },
+  { id: "N2", key: "generic.function",    label: "Web App",      tier: "compute",       zone: null },
+  { id: "N3", key: "generic.database",    label: "PostgreSQL",   tier: "data",          zone: null },
+  { id: "N4", key: "generic.cache",       label: "Redis",        tier: "data",          zone: null },
+  { id: "N5", key: "generic.monitor",     label: "Prometheus",   tier: "observability", zone: null },
+]
+
+scene.edges =
+  • N0 → N1 : kind=data, label "HTTPS"
+  • N1 → N2 : kind=data
+  • N2 → N3 : kind=data
+  • N2 → N4 : kind=data, label "cache"
+  • N2 → N5 : kind=control, label "Metrics"
+```
+
+Generic shapes are visually distinct by primitive — cylinder for
+DB, hexagon for API gateway, predefined-process for function —
+so the diagram reads even without provider icons. If the user
+later asks for vendor branding, they can re-run with explicit
+service names and the skill switches to `azure` or `aws`.
