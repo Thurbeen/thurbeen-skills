@@ -1,14 +1,69 @@
 # Curated DrawIO cloud-service catalog for the `drawio` skill.
 #
-# One provider in v1: Azure (image-based). AWS and GCP are out of
-# scope — AWS was dropped in v2; GCP never made it because drawio
-# inlines its GCP icons as base64 data-URIs with no stable ids.
+# Three providers, distinguished by a `kind` discriminator that
+# controls how a service entry becomes a drawio style string:
 #
-# `azure.style_template` has a `{path}` placeholder the skill
-# substitutes per cell. Per-cell knobs that vary (geometry, label,
-# parent) are NOT in the template — they live on the mxCell itself.
+#   - generic (kind: raw_styles)     — entry IS the style string
+#   - azure   (kind: image_template) — entry is an SVG path; {path}
+#                                       substituted into style_template
+#   - aws     (kind: shape_template) — entry is { shape, category,
+#                                       dedicated? }; {shape} + {color}
+#                                       substituted into one of two
+#                                       templates (resource_icon or
+#                                       dedicated_shape)
+#
+# GCP is intentionally excluded — drawio inlines its GCP icons as
+# base64 data-URIs with no stable ids. GCP-only descriptions are
+# refused in Phase 0 with a hint to use generic shapes.
+
+generic:
+  kind: raw_styles
+  default_size: { width: 60, height: 60 }
+  # Each service entry is a complete drawio style string. No
+  # template substitution — these shapes come from drawio's
+  # built-in libraries (core primitives, basic, networking, rack,
+  # flowchart, eip, mockup, android) and need no external SVG
+  # assets. No vendor-branded libraries (no mscae, no aws4, no
+  # azure2) — that's what the per-provider catalogs are for.
+  services:
+    # --- ingress / edge ---
+    user:              "shape=actor;html=1;fontSize=12;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;"
+    browser:           "shape=mxgraph.mockup.containers.browserWindow;rSize=10;mainText=;html=1;whiteSpace=wrap;fontSize=12;"
+    mobile_app:        "shape=mxgraph.android.phone2;html=1;fontSize=12;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;"
+    internet:          "shape=cloud;whiteSpace=wrap;html=1;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;"
+    cloud:             "shape=cloud;whiteSpace=wrap;html=1;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;"
+    dns:               "shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;"
+    cdn:               "shape=cloud;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;"
+    load_balancer:     "shape=mxgraph.networking.lb;html=1;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;fillColor=#000000;strokeColor=#000000;"
+    api_gateway:       "shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;"
+    firewall:          "shape=mxgraph.networking.firewall;html=1;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;"
+    router:            "shape=mxgraph.networking.router;html=1;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;"
+    switch:            "shape=mxgraph.networking.switch;html=1;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;"
+    # --- compute ---
+    server:            "shape=mxgraph.rack.general.1u_server;html=1;labelPosition=right;align=left;spacingLeft=15;shadow=0;dashed=0;outlineConnect=0;strokeColor=#666666;fillColor=#dae8fc;"
+    vm:                "shape=cube;whiteSpace=wrap;html=1;darkOpacity=0.05;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;"
+    container:         "rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;"
+    function:          "shape=mxgraph.flowchart.predefined_process;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;"
+    web_app:           "rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;"
+    # --- data ---
+    database:          "shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;"
+    cache:             "shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fontSize=12;fillColor=#ffe6cc;strokeColor=#d79b00;"
+    data_warehouse:    "shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;"
+    storage_bucket:    "shape=mxgraph.basic.bucket;whiteSpace=wrap;html=1;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;"
+    blob_object:       "shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;"
+    queue:             "shape=mxgraph.flowchart.manual_input;whiteSpace=wrap;html=1;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;"
+    message_bus:       "shape=mxgraph.eip.message_channel;html=1;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;"
+    event_stream:      "shape=mxgraph.eip.pipes_filters;html=1;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;"
+    # --- observability ---
+    monitor:           "shape=mxgraph.flowchart.display;whiteSpace=wrap;html=1;fontSize=12;fillColor=#dae8fc;strokeColor=#6c8ebf;"
+    log_store:         "shape=document;whiteSpace=wrap;html=1;boundedLbl=1;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;"
+    # --- identity ---
+    identity_provider: "shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fontSize=12;fillColor=#f8cecc;strokeColor=#b85450;"
+    # --- security ---
+    secret_store:      "shape=mxgraph.flowchart.stored_data;whiteSpace=wrap;html=1;fontSize=12;fillColor=#f8cecc;strokeColor=#b85450;"
 
 azure:
+  kind: image_template
   # Azure cells point at SVGs that ship inside the drawio webapp,
   # so consumers don't need to install anything extra. The dominant
   # convention is `image=img/lib/azure2/<category>/<File>.svg`.
@@ -16,6 +71,7 @@ azure:
   # (acronyms preserved: SQL_Database.svg, Azure_AD_B2C.svg).
   style_template: "aspect=fixed;html=1;points=[];align=center;image;fontSize=12;image={path};labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;"
   default_size: { width: 64, height: 64 }
+  image_prefix: "img/lib/azure2/"
   services:
     # --- compute ---
     virtual_machine:          compute/Virtual_Machine.svg
@@ -127,3 +183,111 @@ azure:
     storage_blob:           "shape=mxgraph.azure.storage_blob;verticalLabelPosition=bottom;html=1;verticalAlign=top;align=center;strokeColor=none;fillColor=#00BEF2;labelBackgroundColor=none;"
     storage_queue:          "shape=mxgraph.azure.storage_queue;verticalLabelPosition=top;html=1;verticalAlign=bottom;align=center;strokeColor=none;fillColor=#00BEF2;labelPosition=center;labelBackgroundColor=none;"
     storage_table:          "shape=mxgraph.azure.storage_table;verticalLabelPosition=bottom;html=1;verticalAlign=top;align=center;strokeColor=none;fillColor=#00BEF2;labelBackgroundColor=none;"
+
+aws:
+  kind: shape_template
+  # Drawio's AWS4 library exposes services through `mxgraph.aws4.*`
+  # shape ids, NOT image paths. There are two shape classes:
+  #   - resourceIcon (the colored squircle tile, ~90% of services).
+  #     Style: shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.<svc>;
+  #     Requires per-category fillColor (the tile color).
+  #   - dedicated shapes (~10%) — services with their own glyph,
+  #     e.g. lambda_function, bucket_with_objects, applicationLoadBalancer.
+  #     Style: shape=mxgraph.aws4.<svc>; (no resIcon, no points array)
+  # An entry's `dedicated: true` selects the second template.
+  default_size: { width: 78, height: 78 }
+  resource_icon_template: "sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor={color};strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.{shape};"
+  dedicated_shape_template: "sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor={color};strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.{shape};"
+  # Per-category tile colors. Wrong category = ugly diagram but still
+  # functional; matches the AWS Architecture Icons palette.
+  categories:
+    compute:     "#ED7100"
+    storage:     "#7AA116"
+    database:    "#C925D1"
+    networking:  "#8C4FFF"
+    security:    "#DD344C"
+    integration: "#E7157B"
+    management:  "#E7157B"
+    analytics:   "#8C4FFF"
+    ml:          "#01A88D"
+    general:     "#232F3E"
+  services:
+    # --- compute ---
+    ec2:                    { shape: ec2,                                 category: compute }
+    lambda:                 { shape: lambda_function,                     category: compute, dedicated: true }
+    ecs:                    { shape: elastic_container_service,           category: compute }
+    eks:                    { shape: elastic_kubernetes_service,          category: compute }
+    fargate:                { shape: fargate,                             category: compute }
+    batch:                  { shape: batch,                               category: compute }
+    elastic_beanstalk:      { shape: elastic_beanstalk,                   category: compute }
+    auto_scaling:           { shape: ec2_auto_scaling,                    category: compute }
+    # --- storage ---
+    s3:                     { shape: bucket_with_objects,                 category: storage, dedicated: true }
+    s3_service:             { shape: simple_storage_service_s3,           category: storage }
+    efs:                    { shape: elastic_file_system,                 category: storage }
+    ebs:                    { shape: elastic_block_store,                 category: storage }
+    glacier:                { shape: s3_glacier,                          category: storage }
+    backup:                 { shape: backup,                              category: storage }
+    storage_gateway:        { shape: storage_gateway,                     category: storage }
+    # --- database ---
+    rds:                    { shape: rds,                                 category: database }
+    aurora:                 { shape: aurora,                              category: database }
+    dynamodb:               { shape: dynamodb,                            category: database }
+    elasticache:            { shape: elasticache,                         category: database }
+    redshift:               { shape: redshift,                            category: database }
+    documentdb:             { shape: documentdb_with_mongodb_compatibility, category: database }
+    neptune:                { shape: neptune,                             category: database }
+    # --- networking ---
+    vpc:                    { shape: vpc,                                 category: networking }
+    cloudfront:             { shape: cloudfront,                          category: networking }
+    route_53:               { shape: route_53,                            category: networking }
+    elastic_load_balancing: { shape: elastic_load_balancing,              category: networking }
+    alb:                    { shape: applicationLoadBalancer,             category: networking, dedicated: true }
+    nlb:                    { shape: networkLoadBalancer,                 category: networking, dedicated: true }
+    api_gateway:            { shape: api_gateway,                         category: networking }
+    direct_connect:         { shape: direct_connect,                      category: networking }
+    site_to_site_vpn:       { shape: site_to_site_vpn,                    category: networking }
+    transit_gateway:        { shape: transit_gateway,                     category: networking }
+    nat_gateway:            { shape: nat_gateway,                         category: networking }
+    internet_gateway:       { shape: internet_gateway,                    category: networking }
+    # --- security ---
+    iam:                    { shape: identity_and_access_management_iam,  category: security }
+    cognito:                { shape: cognito,                             category: security }
+    kms:                    { shape: key_management_service,              category: security }
+    secrets_manager:        { shape: secrets_manager,                     category: security }
+    waf:                    { shape: waf,                                 category: security }
+    shield:                 { shape: shield,                              category: security }
+    certificate_manager:    { shape: certificate_manager,                 category: security }
+    guardduty:              { shape: guardduty,                           category: security }
+    # --- integration / messaging ---
+    sqs:                    { shape: simple_queue_service_sqs,            category: integration }
+    sns:                    { shape: simple_notification_service,         category: integration }
+    eventbridge:            { shape: eventbridge,                         category: integration }
+    step_functions:         { shape: step_functions,                      category: integration }
+    appsync:                { shape: appsync,                             category: integration }
+    mq:                     { shape: mq,                                  category: integration }
+    # --- management / governance ---
+    cloudwatch:             { shape: cloudwatch_2,                        category: management }
+    cloudtrail:             { shape: cloudtrail,                          category: management }
+    config:                 { shape: config,                              category: management }
+    systems_manager:        { shape: systems_manager,                     category: management }
+    organizations:          { shape: organizations,                       category: management }
+    control_tower:          { shape: control_tower,                       category: management }
+    cost_explorer:          { shape: cost_explorer,                       category: management }
+    # --- analytics ---
+    athena:                 { shape: athena,                              category: analytics }
+    glue:                   { shape: glue,                                category: analytics }
+    emr:                    { shape: emr,                                 category: analytics }
+    kinesis:                { shape: kinesis,                             category: analytics }
+    kinesis_data_streams:   { shape: kinesis_data_streams,                category: analytics }
+    msk:                    { shape: managed_streaming_for_kafka,         category: analytics }
+    quicksight:             { shape: quicksight,                          category: analytics }
+    # --- machine learning ---
+    sagemaker:              { shape: sagemaker,                           category: ml }
+    bedrock:                { shape: bedrock,                             category: ml }
+    comprehend:             { shape: comprehend,                          category: ml }
+    rekognition:            { shape: rekognition,                         category: ml }
+    # --- general ---
+    user:                   { shape: user,                                category: general }
+    users:                  { shape: users,                               category: general, dedicated: true }
+    region:                 { shape: region,                              category: general }
