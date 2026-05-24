@@ -35,6 +35,28 @@ def _png_chunk(ctype: bytes, payload: bytes) -> bytes:
     )
 
 
+_IEND_CHUNK = b"\x00\x00\x00\x00IEND" + struct.pack(
+    ">I", zlib.crc32(b"IEND") & 0xFFFFFFFF
+)
+
+
+def ensure_iend(path: Path) -> bool:
+    """Append a terminating IEND chunk if the PNG is missing one.
+
+    Some drawio-desktop builds (observed on Arch Linux's AUR package)
+    truncate PNG output one chunk early, omitting the mandatory IEND.
+    Such files open in viewers that tolerate the truncation but are
+    rejected by stricter PNG decoders (e.g. the Anthropic image API
+    returns 400 "Could not process image"). Returns True if a repair
+    was performed.
+    """
+    data = path.read_bytes()
+    if data.endswith(_IEND_CHUNK):
+        return False
+    path.write_bytes(data + _IEND_CHUNK)
+    return True
+
+
 def inject_tEXt_mxfile(path: Path, xml: str) -> None:
     """Inject a `tEXt` chunk with keyword `mxfile` carrying the
     URL-encoded mxfile XML.
@@ -141,6 +163,10 @@ def main(argv: list[str]) -> int:
 
     if not dst.exists():
         fail(f"drawio reported success but output file is missing: {dst}")
+
+    # Repair drawio's PNG if it's missing the mandatory IEND chunk
+    # before any downstream chunk injection or consumption.
+    ensure_iend(dst)
 
     # Always inject the canonical tEXt/mxfile chunk so the diagram is
     # editable in the drawio VS Code extension (not just app.diagrams.net).
