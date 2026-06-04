@@ -293,10 +293,21 @@ Write `meta.json` from what you gathered:
   "resolution": "1080x2400",
   "density": 420,
   "date": "<today>",
-  "screens": [ {"id":"screen-01","image":"screen-01.png","activity":"...","tap_from":"entry"}, ... ],
-  "notes": [ "coverage / skipped-danger lines from Phase 1", ... ]
+  "screens": [ {"id":"screen-01","image":"screen-01.png","activity":"...","tap_from":"entry — Home"}, ... ],
+  "summary": "<2-3 sentence overall impression — quality, what's strong, where issues cluster>",
+  "structural": [
+    {"title":"<strategic theme>", "body":"<problem -> business impact -> concrete action>"}
+  ],
+  "notes": [ "coverage / skipped-danger / PII lines from Phase 1", ... ]
 }
 ```
+
+`summary` and `structural` are **optional but recommended** — they drive
+the report's summary panel and the strategic "Structural recommendations"
+panel. Author 3–5 `structural` items that read like a product advisor's
+verdict (each names the problem, the business/UX lever, and the fix), not
+a restatement of individual findings. `tap_from` is shown as the screen's
+subtitle, so make it descriptive (e.g. `"Refer friends card"`).
 
 Then build the HTML (and a PDF in the same step):
 
@@ -314,10 +325,23 @@ This inlines the CSS, draws bounding boxes for findings that carry
 `bounds` (writing `assets/screen-NN.annotated.png`), and references the
 PNGs by relative path so `report.html` + `assets/` move together.
 
-The stylesheet is **print/PDF-first**: a light, paginated document
-layout (`@page` A4, screenshots floated beside their findings,
-`break-inside` guards so no finding splits across a page boundary, and
-exact colour printing). So the HTML converts to a clean PDF with no
+**Report layout** (a polished, shareable UX-audit document):
+
+- a header with the app name, a meta line, and **severity pills**;
+- a **summary panel** — the `summary` text, a **Top priorities** list
+  (auto-built from the critical/high findings), and a row of **stat
+  tiles** (one per dimension, with its finding count);
+- an optional amber **Structural recommendations** panel from
+  `meta.structural`;
+- one **block per screen**: a numbered badge + `tap_from` subtitle, the
+  **phone-framed annotated screenshot** on the left, and findings on the
+  right **grouped by dimension** into severity-coloured cards (badge +
+  title + description + *Fix:*);
+- a full findings table and the coverage/notes list.
+
+The stylesheet is **print/PDF-first**: light theme, `@page` A4,
+`break-inside` guards so no card or screen splits across a page boundary,
+and exact colour printing — so the HTML converts to a clean PDF with no
 tweaking.
 
 `--pdf` renders that PDF via **headless Chromium** (auto-detected:
