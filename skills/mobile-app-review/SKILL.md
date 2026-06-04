@@ -1,6 +1,6 @@
 ---
 name: mobile-app-review
-description: Review the design, UX, UI, accessibility, and content of a running Android app over adb. Auto-explores screens with safety guardrails and approval before risky actions, then produces an HTML report with annotated screenshots and findings.
+description: Review the design, UX, UI, accessibility, and content of a running Android app over adb. Auto-explores screens with safety guardrails and approval before risky actions, then produces a print/PDF-ready HTML report (with optional one-step PDF export) with annotated screenshots and findings.
 user-invocable: true
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion
 ---
@@ -17,9 +17,10 @@ structured findings.
 app name) and/or an output dir. All optional — defaults are resolved in
 Phase 0.
 
-**Output:** a directory containing `report.html`, an `assets/` folder
-(raw + annotated PNGs and the raw `uiautomator` XML), `findings.json`,
-and `meta.json`.
+**Output:** a directory containing `report.html` (print/PDF-first — a
+light, paginated document layout), an optional `report.pdf`, an
+`assets/` folder (raw + annotated PNGs and the raw `uiautomator` XML),
+`findings.json`, and `meta.json`.
 
 **Platform:** Android only. iOS is out of scope (this skill relies on
 `adb`). If the user asks for iOS, say so and stop.
@@ -43,6 +44,9 @@ helpers under `templates/`:
 - `build_report.py` — turns `findings.json` + `meta.json` + the
   screenshots into `report.html`, drawing severity-colored bounding
   boxes on flagged elements (Pillow if available, skipped gracefully).
+  The HTML uses a print/PDF-first stylesheet (light theme, `@page` A4,
+  `break-inside` guards so findings never split across pages). Pass
+  `--pdf <path>` to also emit a PDF via headless Chromium in one step.
 
 Resolve the skill dir once so the helpers are reachable through the
 symlink:
@@ -294,7 +298,7 @@ Write `meta.json` from what you gathered:
 }
 ```
 
-Then build the HTML:
+Then build the HTML (and a PDF in the same step):
 
 ```bash
 python3 "$SKILL_DIR/templates/build_report.py" \
@@ -302,12 +306,27 @@ python3 "$SKILL_DIR/templates/build_report.py" \
   --meta "$OUTPUT_DIR/meta.json" \
   --assets "$OUTPUT_DIR/assets" \
   --css "$SKILL_DIR/templates/report.css" \
-  --out "$OUTPUT_DIR/report.html"
+  --out "$OUTPUT_DIR/report.html" \
+  --pdf "$OUTPUT_DIR/report.pdf"      # optional; omit for HTML only
 ```
 
 This inlines the CSS, draws bounding boxes for findings that carry
 `bounds` (writing `assets/screen-NN.annotated.png`), and references the
 PNGs by relative path so `report.html` + `assets/` move together.
+
+The stylesheet is **print/PDF-first**: a light, paginated document
+layout (`@page` A4, screenshots floated beside their findings,
+`break-inside` guards so no finding splits across a page boundary, and
+exact colour printing). So the HTML converts to a clean PDF with no
+tweaking.
+
+`--pdf` renders that PDF via **headless Chromium** (auto-detected:
+`chromium` / `chromium-browser` / `google-chrome` / `chrome`). If no
+Chromium is found the script still writes the HTML and tells the user to
+use the browser's **Print → Save as PDF** (the layout is already
+print-ready). Do not reach for heavyweight converters (wkhtmltopdf,
+pandoc/TeXLive, md2pdf) — the headless-Chromium path is the supported
+one.
 
 If Pillow is missing the script still produces the report (screenshots
 without overlays) and adds a note; mention installing `pillow` if the
@@ -319,9 +338,10 @@ user wants annotated images.
 
 Print to the user:
 
-- absolute path to `report.html` and the output dir,
+- absolute path to `report.html` (and `report.pdf` if generated) and the
+  output dir,
 - screens captured and total findings,
 - counts by **severity** and by **dimension**,
 - the top 3–5 issues (highest severity first),
 - any coverage caps hit or danger elements skipped (from `meta.notes`),
-- an open hint: `xdg-open "<output_dir>/report.html"`.
+- an open hint: `xdg-open "<output_dir>/report.pdf"` (or the `.html`).
