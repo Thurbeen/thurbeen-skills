@@ -99,7 +99,7 @@ def render_finding(f):
     rec_html = (
         f'<div class="rec"><b>Fix:</b> {esc(rec)}</div>' if rec else ""
     )
-    return f"""        <div class="finding">
+    return f"""        <div class="finding sev-{esc(sev)}">
           <div class="row">
             <span class="badge {esc(sev)}">{esc(sev)}</span>
             <span class="tag">{esc(dim)}</span>
@@ -117,6 +117,8 @@ def main():
     ap.add_argument("--assets", required=True, help="assets dir (rel to report)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--css", default=None, help="path to report.css to inline")
+    ap.add_argument("--pdf", default=None,
+                    help="also render a PDF to this path via headless Chromium")
     args = ap.parse_args()
 
     try:
@@ -180,17 +182,17 @@ def main():
         activity = sc.get("activity", "")
         tap_from = sc.get("tap_from")
         sub = esc(activity) + (f' &middot; via {esc(tap_from)}' if tap_from else "")
-        screen_blocks.append(f"""      <div class="screen">
-        <div class="shot">
+        screen_blocks.append(f"""      <section class="screen">
+        <figure class="shot">
           <img src="{esc(img_rel)}" alt="{esc(sc['id'])}">
-          <div class="cap">{esc(img_name)}</div>
-        </div>
+          <figcaption>{esc(img_name)}</figcaption>
+        </figure>
         <div class="detail">
-          <h3>{esc(sc['id'])}</h3>
+          <h3 class="screen-title">{esc(sc['id'])}</h3>
           <div class="activity">{sub}</div>
 {findings_html}
         </div>
-      </div>""")
+      </section>""")
     screens_html = "\n".join(screen_blocks) or '<p class="empty">No screens captured.</p>'
 
     # Full findings table.
@@ -209,7 +211,7 @@ def main():
     notes_html = ""
     if notes:
         items = "".join(f"<li>{esc(n)}</li>" for n in notes)
-        notes_html = f'<h2 class="section">Coverage notes</h2><ul>{items}</ul>'
+        notes_html = f'<h2 class="section">Coverage notes</h2><ul class="notes">{items}</ul>'
 
     m = lambda k: esc(meta.get(k, "—"))
     doc = f"""<!doctype html>
@@ -242,7 +244,7 @@ def main():
   <h2 class="section">Screens &amp; findings</h2>
 {screens_html}
 
-  <h2 class="section">All findings</h2>
+  <h2 class="section page-break">All findings</h2>
   <table class="findings">
     <thead><tr><th>Severity</th><th>Dimension</th><th>Screen</th><th>Title</th><th>Recommendation</th></tr></thead>
     <tbody>
@@ -266,7 +268,44 @@ def main():
         print(f"build_report: cannot write {args.out}: {e}", file=sys.stderr)
         return 2
     print(args.out)
+
+    if args.pdf:
+        ok = render_pdf(args.out, args.pdf)
+        if ok:
+            print(args.pdf)
+        else:
+            print("build_report: PDF step skipped (no Chromium found); HTML is "
+                  "print-ready — open it and use the browser's Print > Save as PDF.",
+                  file=sys.stderr)
     return 0
+
+
+def render_pdf(html_path, pdf_path):
+    """Render the HTML to PDF with headless Chromium. Returns True on success.
+
+    The report CSS is print-first (@page A4, light theme, break guards), so the
+    default Chromium print path produces a clean paginated PDF with no extra
+    flags. A unique --user-data-dir avoids clashing with a running browser."""
+    import shutil, subprocess, tempfile
+    binary = next((b for b in (
+        "chromium", "chromium-browser", "google-chrome",
+        "google-chrome-stable", "chrome") if shutil.which(b)), None)
+    if not binary:
+        return False
+    src = os.path.abspath(html_path)
+    out = os.path.abspath(pdf_path)
+    with tempfile.TemporaryDirectory(prefix="mar-chrome-") as profile:
+        cmd = [
+            binary, "--headless", "--no-sandbox", "--disable-gpu",
+            f"--user-data-dir={profile}",
+            "--no-pdf-header-footer",
+            f"--print-to-pdf={out}", f"file://{src}",
+        ]
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, timeout=120)
+        except (subprocess.CalledProcessError, subprocess.TimeoutError, OSError):
+            return False
+    return os.path.isfile(out)
 
 
 if __name__ == "__main__":

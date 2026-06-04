@@ -1,39 +1,55 @@
+/* mobile-app-review report — light, document-style, print/PDF-first.
+   Designed so `chromium --headless --print-to-pdf report.html` yields a clean
+   paginated PDF: float-based layout (paginates better than flex/grid in print
+   engines), break-inside guards on findings, and exact colour printing. */
+
 :root {
-  --bg: #0f1115;
-  --panel: #171a21;
-  --panel-2: #1e222b;
-  --text: #e6e9ef;
-  --muted: #9aa3b2;
-  --border: #2a2f3a;
-  --accent: #6ea8fe;
-  --critical: #ff5c5c;
-  --high: #ff9f43;
-  --medium: #ffd34e;
-  --low: #4ec9b0;
-  --info: #6ea8fe;
+  --bg: #ffffff;
+  --text: #1f2430;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --border: #e5e7eb;
+  --panel: #f7f8fa;
+  --accent: #2563eb;
+  --critical: #c0392b;
+  --high: #d35400;
+  --medium: #b7791f;
+  --low: #1e8449;
+  --info: #2471a3;
 }
+
 * { box-sizing: border-box; }
+
+html {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
 body {
   margin: 0;
-  font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
+  font: 13.5px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
-a { color: var(--accent); }
-.wrap { max-width: 1100px; margin: 0 auto; padding: 32px 24px 96px; }
 
-header.report-head { border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 28px; }
-header.report-head h1 { margin: 0 0 6px; font-size: 26px; }
-.meta-grid { display: flex; flex-wrap: wrap; gap: 8px 28px; color: var(--muted); font-size: 13px; margin-top: 10px; }
+a { color: var(--accent); }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+
+.wrap { max-width: 920px; margin: 0 auto; padding: 28px 28px 64px; }
+
+/* ---- header ---- */
+header.report-head { border-bottom: 2px solid var(--text); padding-bottom: 16px; margin-bottom: 22px; }
+header.report-head h1 { margin: 0; font-size: 23px; letter-spacing: -0.01em; }
+.meta-grid { display: flex; flex-wrap: wrap; gap: 4px 22px; color: var(--muted); font-size: 12px; margin-top: 10px; }
 .meta-grid b { color: var(--text); font-weight: 600; }
 
-.chips { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
 .chip {
-  display: inline-flex; align-items: center; gap: 8px;
+  display: inline-flex; align-items: center; gap: 7px;
   background: var(--panel); border: 1px solid var(--border);
-  border-radius: 999px; padding: 7px 14px; font-size: 13px;
+  border-radius: 6px; padding: 4px 10px; font-size: 12px;
 }
-.chip .dot { width: 10px; height: 10px; border-radius: 50%; }
+.chip .dot { width: 9px; height: 9px; border-radius: 50%; }
 .chip b { font-variant-numeric: tabular-nums; }
 .dot.critical { background: var(--critical); }
 .dot.high { background: var(--high); }
@@ -41,39 +57,71 @@ header.report-head h1 { margin: 0 0 6px; font-size: 26px; }
 .dot.low { background: var(--low); }
 .dot.info { background: var(--info); }
 
-h2.section { font-size: 19px; margin: 40px 0 16px; border-left: 3px solid var(--accent); padding-left: 10px; }
-
-.screen {
-  display: grid; grid-template-columns: 280px 1fr; gap: 24px;
-  background: var(--panel); border: 1px solid var(--border);
-  border-radius: 14px; padding: 20px; margin-bottom: 22px;
+h2.section {
+  font-size: 16px; margin: 28px 0 14px; padding-bottom: 5px;
+  border-bottom: 1px solid var(--border); break-after: avoid;
 }
-@media (max-width: 760px) { .screen { grid-template-columns: 1fr; } }
-.screen .shot { position: sticky; top: 16px; align-self: start; }
-.screen .shot img { width: 100%; border-radius: 10px; border: 1px solid var(--border); display: block; }
-.screen .shot .cap { color: var(--muted); font-size: 12px; margin-top: 8px; word-break: break-all; }
-.screen h3 { margin: 0 0 4px; font-size: 17px; }
-.screen .activity { color: var(--muted); font-size: 12px; margin-bottom: 14px; word-break: break-all; }
+h2.section.page-break { break-before: page; }
 
-.finding { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; background: var(--panel-2); }
-.finding .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* ---- per-screen block: float image left, findings flow right & below ---- */
+.screen {
+  margin-bottom: 22px; padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.screen::after { content: ""; display: block; clear: both; }
+
+.screen .shot { float: left; width: 175px; margin: 2px 20px 10px 0; break-inside: avoid; }
+.screen .shot img { width: 100%; border: 1px solid var(--border); border-radius: 6px; display: block; }
+.screen .shot figcaption { color: var(--faint); font-size: 10px; margin-top: 5px; word-break: break-all; }
+
+.screen-title { margin: 0; font-size: 16px; break-after: avoid; }
+.screen .activity { color: var(--muted); font-size: 11.5px; margin: 2px 0 12px; word-break: break-word; }
+
+/* ---- finding cards ---- */
+.finding {
+  border: 1px solid var(--border); border-left: 3px solid var(--faint);
+  border-radius: 6px; padding: 9px 12px; margin-bottom: 9px; background: #fff;
+  break-inside: avoid;
+}
+.finding.sev-critical { border-left-color: var(--critical); }
+.finding.sev-high { border-left-color: var(--high); }
+.finding.sev-medium { border-left-color: var(--medium); }
+.finding.sev-low { border-left-color: var(--low); }
+.finding.sev-info { border-left-color: var(--info); }
+.finding .row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .finding .title { font-weight: 600; }
-.finding p { margin: 8px 0 0; color: var(--text); }
-.finding .rec { margin-top: 8px; padding-left: 12px; border-left: 2px solid var(--low); color: var(--muted); }
+.finding p { margin: 6px 0 0; }
+.finding .rec { margin-top: 6px; padding-left: 10px; border-left: 2px solid var(--low); color: var(--muted); }
 .finding .rec b { color: var(--low); }
 
-.badge { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 3px 8px; border-radius: 6px; color: #0f1115; }
+.badge {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  padding: 2px 7px; border-radius: 4px; color: #fff; white-space: nowrap;
+}
 .badge.critical { background: var(--critical); }
 .badge.high { background: var(--high); }
 .badge.medium { background: var(--medium); }
 .badge.low { background: var(--low); }
 .badge.info { background: var(--info); }
-.tag { font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; }
+.tag { font-size: 10.5px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 2px 7px; white-space: nowrap; }
 .empty { color: var(--muted); font-style: italic; }
 
-table.findings { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
-table.findings th, table.findings td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-table.findings th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--bg); }
-table.findings tr:hover td { background: var(--panel-2); }
+/* ---- full findings table ---- */
+table.findings { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+table.findings th, table.findings td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.findings thead { display: table-header-group; } /* repeat header across PDF pages */
+table.findings th { color: var(--muted); font-weight: 600; background: var(--panel); }
+table.findings tr { break-inside: avoid; }
 
-footer.report-foot { margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+footer.report-foot { margin-top: 36px; padding-top: 14px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; }
+
+ul.notes { padding-left: 18px; }
+ul.notes li { margin-bottom: 5px; }
+
+/* ---- print / PDF ---- */
+@page { size: A4; margin: 14mm 13mm 16mm; }
+@media print {
+  .wrap { max-width: none; margin: 0; padding: 0; }
+  a { color: inherit; text-decoration: none; }
+  .screen .shot { width: 150px; }
+}

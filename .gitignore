@@ -26,3 +26,7 @@ node_modules/
 
 # mobile-app-review skill output (generated reports may contain device PII)
 mobile-app-review-report/
+
+# Python
+__pycache__/
+*.pyc
